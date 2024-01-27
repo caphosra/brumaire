@@ -253,8 +253,12 @@ class Game:
     def __init__(self, agents: List[AgentBase]) -> None:
         assert len(agents) == 5
 
-        self.board = generate_board()
         self.agents = agents
+
+        self.init_board()
+
+    def init_board(self) -> None:
+        self.board = generate_board()
 
     def extract_choice(self, array: np.ndarray, filter_arr: np.ndarray) -> int:
         filtered = np.maximum(array, 0.) * filter_arr
