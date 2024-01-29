@@ -16,11 +16,12 @@ ROLE_NAPOLEON = 1
 ROLE_ADJUTANT = 2
 ROLE_ALLY = 3
 
-REQ_DEP = 0
-REQ_ADJ_S = 1
-REQ_ADJ_N = 2
-REQ_DISC = 3
-REQ_TRICK = 4
+REQ_DECL_S = 0
+REQ_DECL_N = 1
+REQ_ADJ_S = 2
+REQ_ADJ_N = 3
+REQ_DISC = 4
+REQ_TRICK = 5
 
 RES_SIZE = 14
 
@@ -216,7 +217,7 @@ def card_to_str(card: np.ndarray, convert_number: bool = True) -> str:
         return f"{suit} {num_text}"
 
 class AgentBase:
-    def make_decision(self, board: BoardData, req: int, selected_suit: int = SUIT_JOKER) -> np.ndarray:
+    def make_decision(self, board: BoardData, req: int, argument: int = 0) -> np.ndarray:
         pass
 
     def tell_reward(self, reward: float):
@@ -225,15 +226,21 @@ class AgentBase:
 class RandomAgent(AgentBase):
     decl_p: float
 
-    def __init__(self, decl_p: float = .05) -> None:
+    def __init__(self, decl_p: float = .2) -> None:
         super().__init__()
 
-        assert 0 <= decl_p * 4 <= 1
+        assert 0 <= decl_p * 2 <= 1
         self.decl_p = decl_p
 
-    def make_decision(self, board: BoardData, req: int, selected_suit: int = SUIT_JOKER) -> np.ndarray:
-        if req == REQ_DEP:
-            choice = np.random.choice(5, 1, p=[self.decl_p, self.decl_p, self.decl_p, self.decl_p, 1 - self.decl_p * 4])[0]
+    def make_decision(self, board: BoardData, req: int, argument: int = 0) -> np.ndarray:
+        if req == REQ_DECL_S:
+            return np.eye(RES_SIZE)[np.random.randint(0, 4)]
+        elif req == REQ_DECL_N:
+            possibility = np.zeros(9)
+            possibility[0] = 1 - self.decl_p * 2
+            possibility[1] = self.decl_p
+            possibility[2] = self.decl_p
+            choice = np.random.choice(9, 1, p=possibility)[0]
             return np.eye(RES_SIZE)[choice]
         elif req == REQ_ADJ_S:
             return np.eye(RES_SIZE)[np.random.randint(0, 4)]
@@ -277,48 +284,49 @@ class Game:
             return np.array([suit, current_decl[1] + 1])
 
     def decide_napoleon(self) -> None:
-        declared = False
-        current_decl = np.array([SUIT_SPADE, 12])
-        remained_players = np.ones(5, dtype=np.int64)
-        current_player = np.random.randint(0, 5)
-        while (declared and np.count_nonzero(remained_players) >= 2) \
-                or (not declared and np.count_nonzero(remained_players) >= 1):
-            if remained_players[current_player]:
-                self.board.decl = current_decl
-                board = self.board.change_perspective(current_player)
-                decision = self.agents[current_player].make_decision(board, REQ_DEP)
-                selected_suit = self.extract_choice(decision, np.concatenate((np.ones(5), np.zeros(RES_SIZE - 5))))
-                if selected_suit == 4:
-                    print(f"player{current_player} refused.")
-                    remained_players[current_player] = 0
-                else:
-                    new_decl = self.get_declaration(current_decl, selected_suit)
-                    if new_decl[1] > 20:
-                        print(f"player{current_player} refused because the goal is more than 20.")
-                        remained_players[current_player] = 0
-                    else:
-                        new_decl_str = card_to_str(new_decl, convert_number=False)
-                        print(f"player{current_player} declared {new_decl_str}.")
-                        current_decl = new_decl
-                        declared = True
-            current_player += 1
-            current_player %= 5
+        first_player = np.random.randint(0, 5)
 
-        # If no one declared their goal, force someone to do it.
-        # The player who have to declare the goal is selected randomly.
-        if not declared:
-            selected_player = np.random.randint(0, 5)
-            self.board.decl = np.array([SUIT_SPADE, 12])
-            board = self.board.change_perspective(selected_player)
+        print(f"player{first_player} is a first player.")
 
-            decision = self.agents[selected_player].make_decision(board, REQ_DEP)
-            selected_suit = self.extract_choice(decision, np.concatenate((np.ones(4), np.zeros(RES_SIZE - 4))))
+        declarations = np.zeros((5, 2))
+        for player in range(5):
+            board = self.board.change_perspective(player)
 
-            current_decl = np.array([selected_suit, 13])
-            remained_players[selected_player] = 1.
+            decision = self.agents[player].make_decision(board, REQ_DECL_S)
+            suit = self.extract_choice(decision, np.concatenate((np.ones(4), np.zeros(RES_SIZE - 4))))
 
-        napoleon = remained_players.argmax()
-        self.board.decl = current_decl
+            decision = self.agents[player].make_decision(board, REQ_DECL_N, suit)
+            num = self.extract_choice(decision, np.concatenate((np.ones(9), np.zeros(RES_SIZE - 9)))) + 12
+
+            declarations[player, 0] = suit
+            declarations[player, 1] = num
+
+            print(f"player{player} declared {card_to_str(declarations[player], False)}.")
+
+        rolled_declarations = np.roll(declarations, -first_player, axis=0)
+
+        declaration_indexes = (rolled_declarations[:, 1] * 4 + rolled_declarations[:, 0]) * 5 - np.arange(5)
+
+        if np.amax(declaration_indexes) < (13 * 4 + SUIT_CLUB) * 5 - 4:
+            # All of the players want to fold.
+            # Choose a napoleon randomly.
+            napoleon = np.random.randint(0, 5)
+            declarations[napoleon, 1] = 13
+            self.board.decl = declarations[napoleon]
+        else:
+            napoleon = np.argmax(declaration_indexes)
+            second = np.sort(declaration_indexes)[-2]
+
+            # Reduce the number of cards.
+            declaration_red = (declaration_indexes[napoleon] - second) // 5 // 4
+            napoleon = (first_player + napoleon) % 5
+            declarations[napoleon, 1] -= declaration_red
+            declarations[napoleon, 1] = max(13, declarations[napoleon, 1])
+
+            self.board.decl = declarations[napoleon]
+
+        print(f"player{napoleon} is a napoleon for {card_to_str(declarations[napoleon], False)}.")
+
         self.board.roles[napoleon] = ROLE_NAPOLEON
         self.board.lead = np.array([napoleon, SUIT_JOKER])
 
