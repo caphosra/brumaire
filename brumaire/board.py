@@ -1,41 +1,47 @@
 import numpy as np
+import numpy.typing as npt
 from typing import Self
 
 from . import *
 
+type NDIntArray = npt.NDArray[np.int64]
+
 class BoardData:
-    cards: np.ndarray
-    taken: np.ndarray
-    roles: np.ndarray
-    decl: np.ndarray
-    lead: np.ndarray
+    board_num: int
+    cards: NDIntArray
+    taken: NDIntArray
+    roles: NDIntArray
+    decl: NDIntArray
+    lead: NDIntArray
+
     """
     [<a player who tricked the lead>, <a suit of the lead>]
     """
 
-    def __init__(self, cards: np.ndarray, taken: np.ndarray, roles: np.ndarray, decl: np.ndarray, lead: np.ndarray) -> Self:
-        assert cards.shape == (4, 54)
-        assert taken.shape == (5,)
-        assert roles.shape == (5,)
-        assert decl.shape == (2,)
-        assert lead.shape == (2,)
+    def __init__(self, board_num: int, cards: NDIntArray, taken: NDIntArray, roles: NDIntArray, decl: NDIntArray, lead: NDIntArray) -> Self:
+        assert cards.shape == (board_num, 54, 4)
+        assert taken.shape == (board_num, 5)
+        assert roles.shape == (board_num, 5)
+        assert decl.shape == (board_num, 2)
+        assert lead.shape == (board_num, 2)
 
+        self.board_num = board_num
         self.cards = cards
         self.taken = taken
         self.roles = roles
         self.decl = decl
         self.lead = lead
 
-    def get_card_status(self, suit: int, num: int) -> np.ndarray:
-        return self.cards[:, suit * 13 + num]
+    def get_card_status(self, suit: int, num: int) -> NDIntArray:
+        return self.cards[:, :, suit * 13 + num]
 
-    def get_napoleon(self) -> int:
+    def get_napoleon(self) -> NDIntArray:
         """
         Find the player who is a napoleon.
         You should not call this method before a napoleon is determined.
         """
 
-        return np.argwhere(self.roles == ROLE_NAPOLEON).reshape(1)[0]
+        return np.argwhere(self.roles == ROLE_NAPOLEON)[:, 1]
 
     def change_perspective(self, player: int) -> Self:
         cards = self.cards.copy()
@@ -45,40 +51,41 @@ class BoardData:
         lead = self.lead.copy()
 
         # Roll the lists to make the player first.
-        taken = np.roll(taken, -player)
-        roles = np.roll(roles, -player)
+        taken = np.roll(taken, -player, axis=1)
+        roles = np.roll(roles, -player, axis=1)
 
         # Change the first player.
         lead[0] = (lead[0] - player) % 5
 
         # Hide the role information if the adjutant card has not been public.
-        is_role_unknown = np.any((cards[0] == CARD_IN_HAND) & (cards[1] != player) & (cards[3] == 1))
-        if is_role_unknown:
-            player_role = roles[0]
-            roles[roles == ROLE_ADJUTANT] = ROLE_UNKNOWN
-            roles[roles == ROLE_ALLY] = ROLE_UNKNOWN
-            roles[0] = player_role
+        is_role_unknown = np.any((cards[:, :, 0] == CARD_IN_HAND) & (cards[:, :, 1] != player) & (cards[:, :, 3] == 1), axis=1)
+        is_role_unknown = np.repeat(np.reshape(is_role_unknown, (-1, 1)), 5, axis=1)
+
+        assert np.shape(is_role_unknown) == (self.board_num, 5)
+
+        player_role = np.copy(roles[:, 0])
+        roles[is_role_unknown & (roles == ROLE_ADJUTANT)] = ROLE_UNKNOWN
+        roles[is_role_unknown & (roles == ROLE_ALLY)] = ROLE_UNKNOWN
+        roles[:, 0] = player_role
 
         # Update owners of cards.
-        card_known = cards[0] != CARD_UNKNOWN
-        cards[1, card_known] = (cards[1, card_known] - player) % 5
+        card_known = cards[:, :, 0] != CARD_UNKNOWN
+        cards[card_known, 1] = (cards[card_known, 1] - player) % 5
 
         # Mark unknown the cards which the others have.
         assert CARD_UNKNOWN == 0
-        others_own = (cards[0] == CARD_IN_HAND) & (cards[1] != 0)
-        cards[0, others_own] = CARD_UNKNOWN
-        cards[1, others_own] = 0
-        cards[2, others_own] = 0
+        others_own = (cards[:, :, 0] == CARD_IN_HAND) & (cards[:, :, 1] != 0)
+        cards[others_own] = np.repeat(np.array([[CARD_UNKNOWN, 0, 0, 0]]), len(cards[others_own]), axis=0)
 
-        return BoardData(cards, taken, roles, declaration, lead)
+        return BoardData(self.board_num, cards, taken, roles, declaration, lead)
 
-    def hand(self, player: int) -> np.ndarray:
-        return (self.cards[0] == CARD_IN_HAND) & (self.cards[1] == player)
+    def hand(self, player: int) -> NDIntArray:
+        return (self.cards[:, 0] == CARD_IN_HAND) & (self.cards[:, 1] == player)
 
     def get_hand_filter(self, player: int) -> np.ndarray:
-        lead_suit = self.lead[1].astype(np.int64)
-        is_trump: bool = self.decl[0].astype(np.int64) == lead_suit
-        hand: np.ndarray = self.cards[2, self.hand(player)]
+        lead_suit = self.lead[:, 1]
+        is_trump: bool = self.decl[:, 0] == lead_suit
+        hand: np.ndarray = self.cards[:, 2, self.hand(player)]
 
         if lead_suit != SUIT_JOKER:
             possible_cards_index = np.arange(lead_suit * 13, (lead_suit + 1) * 13)
@@ -139,3 +146,27 @@ class BoardData:
 
         strong = np.amax(cards[(lead_suit * 13 <= cards) & (cards < (lead_suit + 1) * 13)])
         return np.where(cards == strong)[0][0]
+
+def generate_board(board_num: int) -> BoardData:
+    cards = np.zeros((board_num, 54, 4))
+    taken = np.zeros((board_num, 5))
+    roles = np.zeros((board_num, 5))
+    decl = np.repeat(np.array([[SUIT_SPADE, 12]]), board_num, axis=0)
+    lead = np.repeat(np.array([[0, SUIT_JOKER]]), board_num, axis=0)
+
+    cards[:, :, 0] = CARD_IN_HAND
+
+    for idx in range(board_num):
+        # Shuffle the numbers.
+        owners = np.concatenate((np.repeat(np.arange(5), 10), np.array([5, 5, 5, 5])))
+        np.random.shuffle(owners)
+        cards[idx, :, 1] = owners
+
+        # Index the cards.
+        for player in range(5):
+            cards[idx, cards[idx, :, 1] == player, 2] = np.arange(10)
+
+        # Reset parameters of cards which no one holds.
+        cards[idx, cards[idx, :, 1] == 5] = np.array([CARD_UNKNOWN, 0, 0, 0])
+
+    return BoardData(board_num, cards, taken, roles, decl, lead)

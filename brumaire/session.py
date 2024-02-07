@@ -3,26 +3,7 @@ from typing import List
 
 from . import *
 from brumaire.agent import AgentBase
-from brumaire.board import BoardData
-
-def generate_board() -> BoardData:
-    cards = np.zeros((4, 54))
-    taken = np.zeros(5)
-    roles = np.zeros(5)
-    decl = np.array([SUIT_SPADE, 12])
-    lead = np.array([0, SUIT_JOKER])
-
-    owners = np.concatenate((np.repeat(np.arange(5), 10), np.array([5, 5, 5, 5])))
-    np.random.shuffle(owners)
-    cards[0] = CARD_IN_HAND
-    cards[1] = owners
-
-    for player in range(5):
-        cards[2, cards[1] == player] = np.arange(10)
-
-    cards[:, cards[1] == 5] = np.array([CARD_UNKNOWN, 0, 0, 0])
-
-    return BoardData(cards, taken, roles, decl, lead)
+from brumaire.board import BoardData, generate_board
 
 def suit_to_str(suit: int) -> str:
     if suit == SUIT_CLUB:
