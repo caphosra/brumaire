@@ -1,5 +1,5 @@
 import numpy as np
-from typing import List
+from typing import List, Callable
 
 from . import *
 from brumaire.agent import AgentBase
@@ -42,17 +42,36 @@ def card_to_str(card: np.ndarray, convert_number: bool = True) -> str:
 
 class Game:
     board: BoardData
+    board_num: int
     agents: List[AgentBase]
+    log_enabled: bool
+    logs: List[List[str]]
 
-    def __init__(self, agents: List[AgentBase]) -> None:
+    def __init__(self, board_num: int, agents: List[AgentBase], log_enabled: bool = False) -> None:
         assert len(agents) == 5
 
+        self.board_num = board_num
         self.agents = agents
+        self.log_enabled = log_enabled
+
+        if log_enabled:
+            self.clear_logs()
 
         self.init_board()
 
+    def clear_logs(self) -> None:
+        assert self.log_enabled
+
+        self.logs = list(map(lambda _: list(), range(self.board_num)))
+
     def init_board(self) -> None:
-        self.board = generate_board()
+        self.board = generate_board(self.board_num)
+
+    def log(self, log_func: Callable[[int], str]) -> None:
+        if self.log_enabled:
+            for idx in range(self.board_num):
+                message = log_func(idx)
+                self.logs[idx].append(message)
 
     def extract_choice(self, array: np.ndarray, filter_arr: np.ndarray) -> int:
         filtered = np.maximum(array, 0.) * filter_arr
@@ -71,54 +90,74 @@ class Game:
             return np.array([suit, current_decl[1] + 1])
 
     def decide_napoleon(self) -> None:
-        first_player = np.random.randint(0, 5)
+        first_player = np.random.randint(5, size=self.board_num)
 
-        print(f"player{first_player} is a first player.")
+        self.log(lambda idx: f"player{first_player[idx]} is a first player.")
 
-        declarations = np.zeros((5, 4))
+        declarations = np.zeros((self.board_num, 5, 4))
         for player in range(5):
             board = self.board.change_perspective(player)
 
-            declarations[player] = self.agents[player].declare_goal(board)
+            declarations[:, player] = self.agents[player].declare_goal(board)
 
-            print(f"player{player} declared {card_to_str(declarations[player, [0, 1]], False)}.")
+            self.log(lambda idx: f"player{player} declared {card_to_str(declarations[idx, player, [0, 1]], False)}.")
 
-        rolled_declarations = np.roll(declarations, -first_player, axis=0)
+        # Select a napoleon randomly.
+        # The result will be dropped if at least one person wants to be.
+        random_napoleon = np.amax(declarations[:, :, 1], axis=1) < 13
 
-        declaration_indexes = (rolled_declarations[:, 1] * 4 + rolled_declarations[:, 0]) * 5 - np.arange(5)
+        if self.log_enabled:
+            self.log(
+                lambda idx: "The napoleon will be selected randomly." if random_napoleon[idx] else "There is a valid goal."
+            )
 
-        if np.amax(declaration_indexes) < (13 * 4 + SUIT_CLUB) * 5 - 4:
-            # All of the players want to fold.
-            # Choose a napoleon randomly.
-            napoleon = np.random.randint(0, 5)
-            declarations[napoleon, 1] = 13
-            self.board.decl = declarations[napoleon, [0, 1]]
-        else:
-            napoleon = np.argmax(declaration_indexes)
-            second = np.sort(declaration_indexes)[-2]
+        randomly_selected_napoleon = \
+            np.repeat(random_napoleon[:, None], 5, axis=1) \
+            & (np.eye(5)[np.random.randint(5, size=self.board_num)] == 1)
 
-            # Reduce the number of cards.
-            declaration_red = (declaration_indexes[napoleon] - second) // 5 // 4
-            napoleon = (first_player + napoleon) % 5
-            declarations[napoleon, 1] -= declaration_red
-            declarations[napoleon, 1] = max(13, declarations[napoleon, 1])
+        print(randomly_selected_napoleon)
 
-            self.board.decl = declarations[napoleon, [0, 1]]
+        # Rewrite the declaration of randomly-selected player
+        # only if all of the players want to fold.
+        declarations[randomly_selected_napoleon, 1] = 13
 
-        print(f"player{napoleon} is a napoleon for {card_to_str(declarations[napoleon, [0, 1]], False)}.")
+        # Calculate a parameter to prioritize the goals.
+        rolled_declarations = declarations.copy()
+        for idx in range(self.board_num):
+            rolled_declarations[idx] = np.roll(declarations[idx], -first_player[idx], axis=0)
 
-        self.board.roles[napoleon] = ROLE_NAPOLEON
-        self.board.lead = np.array([napoleon, SUIT_JOKER])
+        declaration_indexes = \
+            (rolled_declarations[:, :, 1] * 4 + rolled_declarations[:, :, 0]) * 5 \
+            - np.repeat(np.arange(5)[None, :], self.board_num, axis=0)
 
-        adj_declaration_card = declarations[napoleon, [2, 3]].astype(np.int64)
-        adjutant_card_text = card_to_str(adj_declaration_card)
-        print(f"The adjutant card is {adjutant_card_text}.")
+        napoleon = np.argmax(declaration_indexes, axis=1)
+        sorted_indexes = np.sort(declaration_indexes, axis=1)
+        first = sorted_indexes[:, -1]
+        second = sorted_indexes[:, -2]
 
-        adjutant_card = self.board.cards[:, adj_declaration_card[0] * 13 + adj_declaration_card[1]]
-        adjutant_card[3] = 1.
-        if adjutant_card[0] == CARD_IN_HAND and adjutant_card[1] != napoleon:
-            self.board.roles[adjutant_card[1].astype(np.int64)] = ROLE_ADJUTANT
-        self.board.roles[self.board.roles == ROLE_UNKNOWN] = ROLE_ALLY
+        # Reduce the number of cards.
+        declaration_red = (first - second) // 5 // 4
+        napoleon = (first_player + napoleon) % 5
+
+        for idx in range(self.board_num):
+            declarations[idx, napoleon[idx], 1] -= declaration_red[idx]
+            declarations[idx, napoleon[idx], 1] = max(13, declarations[idx, napoleon[idx], 1])
+
+            self.board.decl[idx] = declarations[idx, napoleon[idx], [0, 1]]
+
+            self.board.roles[idx, napoleon[idx]] = ROLE_NAPOLEON
+            self.board.lead[idx] = np.array([napoleon[idx], SUIT_JOKER])
+
+            adj_declaration_card = declarations[idx, napoleon[idx], [2, 3]].astype(np.int64)
+
+            adjutant_card = self.board.cards[idx, adj_declaration_card[0] * 13 + adj_declaration_card[1]]
+            adjutant_card[3] = 1.
+            if adjutant_card[0] == CARD_IN_HAND and adjutant_card[1] != napoleon[idx]:
+                self.board.roles[idx, adjutant_card[1].astype(np.int64)] = ROLE_ADJUTANT
+            self.board.roles[idx, self.board.roles[idx] == ROLE_UNKNOWN] = ROLE_ALLY
+
+        self.log(lambda idx: f"player{napoleon[idx]} is a napoleon for {card_to_str(declarations[idx, napoleon[idx], [0, 1]], False)}.")
+        self.log(lambda idx: f"The adjutant card is {card_to_str(declarations[idx, napoleon[idx], [2, 3]])}.")
 
     def discard_additional_cards(self) -> None:
         napoleon = self.board.get_napoleon()
