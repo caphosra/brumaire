@@ -5,6 +5,7 @@ from typing import Self
 from . import *
 
 type NDIntArray = npt.NDArray[np.int64]
+type NDBoolArray = npt.NDArray[np.bool_]
 
 class BoardData:
     board_num: int
@@ -43,7 +44,9 @@ class BoardData:
 
         return np.argwhere(self.roles == ROLE_NAPOLEON)[:, 1]
 
-    def change_perspective(self, player: int) -> Self:
+    def change_perspective(self, players: NDIntArray) -> Self:
+        assert players.shape == (self.board_num,)
+
         cards = self.cards.copy()
         taken = self.taken.copy()
         roles = self.roles.copy()
@@ -51,14 +54,15 @@ class BoardData:
         lead = self.lead.copy()
 
         # Roll the lists to make the player first.
-        taken = np.roll(taken, -player, axis=1)
-        roles = np.roll(roles, -player, axis=1)
+        for idx in range(self.board_num):
+            taken[idx] = np.roll(taken[idx], -players[idx])
+            roles[idx] = np.roll(roles[idx], -players[idx])
 
         # Change the first player.
-        lead[0] = (lead[0] - player) % 5
+        lead[:, 0] = (lead[:, 0] - players) % 5
 
         # Hide the role information if the adjutant card has not been public.
-        is_role_unknown = np.any((cards[:, :, 0] == CARD_IN_HAND) & (cards[:, :, 1] != player) & (cards[:, :, 3] == 1), axis=1)
+        is_role_unknown = np.any((cards[:, :, 0] == CARD_IN_HAND) & ((cards[:, :, 1].T == players).T) & (cards[:, :, 3] == 1), axis=1)
         is_role_unknown = np.repeat(np.reshape(is_role_unknown, (-1, 1)), 5, axis=1)
 
         assert np.shape(is_role_unknown) == (self.board_num, 5)
@@ -69,8 +73,9 @@ class BoardData:
         roles[:, 0] = player_role
 
         # Update owners of cards.
-        card_known = cards[:, :, 0] != CARD_UNKNOWN
-        cards[card_known, 1] = (cards[card_known, 1] - player) % 5
+        for idx in range(self.board_num):
+            card_known = cards[idx, :, 0] != CARD_UNKNOWN
+            cards[idx, card_known, 1] = (cards[idx, card_known, 1] - players[idx]) % 5
 
         # Mark unknown the cards which the others have.
         assert CARD_UNKNOWN == 0
@@ -79,8 +84,23 @@ class BoardData:
 
         return BoardData(self.board_num, cards, taken, roles, declaration, lead)
 
+    def change_perspective_to_one(self, player: int) -> Self:
+        return self.change_perspective(np.repeat(player, self.board_num))
+
+    def get_hand(self, idx: int, player: int) -> NDBoolArray:
+        return (self.cards[idx, :, 0] == CARD_IN_HAND) & (self.cards[idx, :, 1] == player)
+
+    def get_hands(self, players: NDIntArray) -> NDBoolArray:
+        """
+        Get hands of players across boards.
+        """
+
+        assert players.shape == (self.board_num,)
+
+        return (self.cards[:, :, 0] == CARD_IN_HAND) & (self.cards[:, :, 1].T == players).T
+
     def hand(self, player: int) -> NDIntArray:
-        return (self.cards[:, 0] == CARD_IN_HAND) & (self.cards[:, 1] == player)
+        return (self.cards[:, :, 0] == CARD_IN_HAND) & (self.cards[:, :, 1] == player)
 
     def get_hand_filter(self, player: int) -> np.ndarray:
         lead_suit = self.lead[:, 1]
