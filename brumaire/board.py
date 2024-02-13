@@ -44,6 +44,17 @@ class BoardData:
 
         return np.argwhere(self.roles == ROLE_NAPOLEON)[:, 1]
 
+    def slice_boards(self, board_filter: NDBoolArray) -> Self:
+        board_num = np.sum(board_filter)
+
+        cards = self.cards[board_filter]
+        taken = self.taken[board_filter]
+        roles = self.roles[board_filter]
+        declaration = self.decl[board_filter]
+        lead = self.lead[board_filter]
+
+        return BoardData(board_num, cards, taken, roles, declaration, lead)
+
     def change_perspective(self, players: NDIntArray) -> Self:
         assert players.shape == (self.board_num,)
 

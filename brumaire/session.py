@@ -173,7 +173,7 @@ class Game:
         # This operation is conducted for each agent, not for each board.
         to_be_discarded = np.zeros((self.board_num, 14), dtype=bool)
         for player in range(5):
-            napoleons_board = self.board.restrict(napoleons == player)
+            napoleons_board = self.board.slice_boards(napoleons == player)
             napoleons_board = napoleons_board.change_perspective_to_one(player)
 
             four_hots_decision = self.agents[player].discard(napoleons_board)
