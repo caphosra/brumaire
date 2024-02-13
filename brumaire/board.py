@@ -15,6 +15,8 @@ class BoardData:
     decl: NDIntArray
     lead: NDIntArray
 
+    suit_transform: NDIntArray
+
     """
     [<a player who tricked the lead>, <a suit of the lead>]
     """
@@ -32,6 +34,11 @@ class BoardData:
         self.roles = roles
         self.decl = decl
         self.lead = lead
+
+        self.suit_transform = np.zeros((5, 54), dtype=bool)
+        for suit in range(4):
+            self.suit_transform[suit, (suit * 13):((suit + 1) * 13)] = True
+        self.suit_transform[SUIT_JOKER, :] = True
 
     def get_card_status(self, suit: int, num: int) -> NDIntArray:
         return self.cards[:, :, suit * 13 + num]
@@ -98,6 +105,9 @@ class BoardData:
     def change_perspective_to_one(self, player: int) -> Self:
         return self.change_perspective(np.repeat(player, self.board_num))
 
+    def get_suits_map(self, suits: NDIntArray) -> NDBoolArray:
+        return self.suit_transform[suits]
+
     def get_hand(self, idx: int, player: int) -> NDBoolArray:
         return (self.cards[idx, :, 0] == CARD_IN_HAND) & (self.cards[idx, :, 1] == player)
 
@@ -110,24 +120,28 @@ class BoardData:
 
         return (self.cards[:, :, 0] == CARD_IN_HAND) & (self.cards[:, :, 1].T == players).T
 
-    def hand(self, player: int) -> NDIntArray:
-        return (self.cards[:, :, 0] == CARD_IN_HAND) & (self.cards[:, :, 1] == player)
+    def get_players_hands(self, player: int) -> NDIntArray:
+        return self.get_hands(np.ones(self.board_num, dtype=np.int64) * player)
 
     def get_hand_filter(self, player: int) -> np.ndarray:
         lead_suit = self.lead[:, 1]
-        is_trump: bool = self.decl[:, 0] == lead_suit
-        hand: np.ndarray = self.cards[:, 2, self.hand(player)]
+        is_trump: NDBoolArray = self.decl[:, 0] == lead_suit
 
-        if lead_suit != SUIT_JOKER:
-            possible_cards_index = np.arange(lead_suit * 13, (lead_suit + 1) * 13)
-            if is_trump:
-                possible_cards_index = np.concatenate((possible_cards_index, np.array([SUIT_JOKER * 13, SUIT_JOKER * 13 + 1])))
-            possible_cards = self.cards[:, possible_cards_index]
-            restricted_hand = possible_cards[2, (possible_cards[0] == CARD_IN_HAND) & (possible_cards[1] == player)]
-            if len(restricted_hand) > 0:
-                hand = restricted_hand
+        suits_map = self.get_suits_map(lead_suit)
+        suits_map[is_trump, 52:54] = True
 
-        return np.sum(np.eye(10)[hand.astype(np.int64)], axis=0)
+        hands = self.get_players_hands(player)
+        possible_cards = suits_map & hands
+
+        nothing = ~np.any(possible_cards, axis=1)
+        possible_cards[nothing] = hands[nothing]
+
+        hand_filter = np.zeros((self.board_num, 10))
+        for idx in range(self.board_num):
+            players = self.cards[idx, possible_cards[idx], 2].astype(np.int64)
+            hand_filter[idx] = np.sum(np.eye(10)[players], axis=0)
+
+        return hand_filter
 
     def get_trick_winner(self, cards: np.ndarray, first_player: int) -> int:
         trump = self.decl[0].astype(np.int64)
