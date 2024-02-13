@@ -96,7 +96,7 @@ class Game:
 
         declarations = np.zeros((self.board_num, 5, 4))
         for player in range(5):
-            board = self.board.change_perspective(player)
+            board = self.board.change_perspective_to_one(player)
 
             declarations[:, player] = self.agents[player].declare_goal(board)
 
@@ -114,8 +114,6 @@ class Game:
         randomly_selected_napoleon = \
             np.repeat(random_napoleon[:, None], 5, axis=1) \
             & (np.eye(5)[np.random.randint(5, size=self.board_num)] == 1)
-
-        print(randomly_selected_napoleon)
 
         # Rewrite the declaration of randomly-selected player
         # only if all of the players want to fold.
@@ -160,33 +158,48 @@ class Game:
         self.log(lambda idx: f"The adjutant card is {card_to_str(declarations[idx, napoleon[idx], [2, 3]])}.")
 
     def discard_additional_cards(self) -> None:
-        napoleon = self.board.get_napoleon()
+        napoleons = self.board.get_napoleon()
 
-        self.board.cards[1, self.board.cards[0] == CARD_UNKNOWN] = napoleon
-        self.board.cards[0, self.board.cards[0] == CARD_UNKNOWN] = CARD_IN_HAND
+        # Give 4 additional cards.
+        for idx in range(self.board_num):
+            self.board.cards[idx, self.board.cards[idx, :, 0] == CARD_UNKNOWN, 1] = napoleons[idx]
+        self.board.cards[self.board.cards[:, :, 0] == CARD_UNKNOWN, 0] = CARD_IN_HAND
 
-        napoleons_hand = self.board.hand(napoleon)
+        # Reindex the napoleons hands.
+        napoleons_hands = self.board.get_hands(napoleons)
+        self.board.cards[napoleons_hands, 2] = np.repeat(np.arange(14)[None, :], self.board_num, axis=0).flatten()
 
-        self.board.cards[2, napoleons_hand] = np.arange(14)
+        # Have the agents decide cards to be discarded.
+        # This operation is conducted for each agent, not for each board.
+        to_be_discarded = np.zeros((self.board_num, 14), dtype=bool)
+        for player in range(5):
+            napoleons_board = self.board.restrict(napoleons == player)
+            napoleons_board = napoleons_board.change_perspective_to_one(player)
 
-        board = self.board.change_perspective(napoleon)
+            four_hots_decision = self.agents[player].discard(napoleons_board)
+            to_be_discarded[napoleons == player] = four_hots_decision > 0.
 
-        four_hots_decision = self.agents[napoleon].discard(board)
-        decision = np.where(four_hots_decision > 0.)[0]
+        # Extend range of the list from the hands to all of the cards.
+        cards_to_be_discarded = np.zeros((self.board_num, 54), dtype=bool)
+        for idx in range(self.board_num):
+            cards_to_be_discarded[idx, self.board.cards[idx, : , 1] == napoleons[idx]] = to_be_discarded[idx]
 
-        cards_to_be_discarded = napoleons_hand & np.isin(self.board.cards[2], decision)
+        # Write the consequence of discarding cards to the log.
+        if self.log_enabled:
+            discarded_cards_list = np.argwhere(cards_to_be_discarded)
+            discarded = np.zeros((self.board_num, 4))
+            for idx in range(self.board_num):
+                discarded[idx] = discarded_cards_list[discarded_cards_list[:, 0] == idx, 1]
+            for card_idx in range(4):
+                self.log(lambda idx: f"player{napoleons[idx]} discards {card_to_str(np.array([discarded[idx, card_idx] // 13, discarded[idx, card_idx] % 13]))}.")
 
-        cards = np.argwhere(cards_to_be_discarded)[:, 0]
-        for card in cards:
-            card_text = card_to_str(np.array([card // 13, card % 13]))
-            print(f"player{napoleon} discards {card_text}.")
+        # Reflect the consequence to the boards.
+        for idx in range(self.board_num):
+            self.board.cards[idx, cards_to_be_discarded[idx], 0:3] = np.array([CARD_TRICKED, napoleons[idx], -1])
 
-        self.board.cards[0, cards_to_be_discarded] = CARD_TRICKED
-        self.board.cards[1, cards_to_be_discarded] = napoleon
-        self.board.cards[2, cards_to_be_discarded] = -1
-
-        napoleons_hand = self.board.hand(napoleon)
-        self.board.cards[2, napoleons_hand] = np.arange(10)
+        # Reindex the napoleons hands.
+        napoleons_hands = self.board.get_hands(napoleons)
+        self.board.cards[napoleons_hands, 2] = np.repeat(np.arange(10)[None, :], self.board_num, axis=0).flatten()
 
     def trick(self, turn_num: int) -> None:
         first_player: int = self.board.lead[0].astype(np.int64)
