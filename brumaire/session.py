@@ -73,16 +73,6 @@ class Game:
                 message = log_func(idx)
                 self.logs[idx].append(message)
 
-    def extract_choice(self, array: np.ndarray, filter_arr: np.ndarray) -> int:
-        filtered = np.maximum(array, 0.) * filter_arr
-        sum = np.sum(filtered)
-        if sum == 0.:
-            possibility = filter_arr / np.sum(filter_arr)
-        else:
-            possibility = filtered / sum
-
-        return np.random.choice(10, 1, p=possibility)[0]
-
     def get_declaration(self, current_decl: np.ndarray, suit: int) -> np.ndarray:
         if current_decl[0] < suit:
             return np.array([suit, current_decl[1]])
@@ -202,40 +192,63 @@ class Game:
         self.board.cards[napoleons_hands, 2] = np.repeat(np.arange(10)[None, :], self.board_num, axis=0).flatten()
 
     def trick(self, turn_num: int) -> None:
-        first_player: int = self.board.lead[0].astype(np.int64)
+        self.log(lambda _: f"--- TRICK: {turn_num} ---")
 
-        cards_tricked = np.zeros(5)
+        first_players = self.board.lead[:, 0]
+        cards_tricked = np.zeros((self.board_num, 5), dtype=int)
 
         for player_index in range(5):
-            player = (first_player + player_index) % 5
+            players = (first_players + player_index) % 5
 
-            board = self.board.change_perspective(player)
+            # Have agents decide their cards to put.
+            decisions = np.zeros((self.board_num, 54), dtype=bool)
+            for player in range(5):
+                if not np.any(players == player):
+                    continue
 
-            hand_filter = self.board.get_hand_filter(player)
+                players_boards = self.board.slice_boards(players == player)
+                players_boards = players_boards.change_perspective_to_one(player)
 
-            decision = self.agents[player].put_card(board)
-            num = self.extract_choice(decision, hand_filter)
+                hand_filter = players_boards.get_hand_filter(0)
+                agent_decision = self.agents[player].put_card(players_boards, hand_filter)
+                agent_decision = agent_decision * hand_filter
 
-            selected_card = self.board.hand(player) & (self.board.cards[2] == num)
+                assert np.all(np.sum(agent_decision, axis=1) == 1)
 
-            card = np.argwhere(selected_card)[0][0]
-            card_text = card_to_str(np.array([card // 13, card % 13]))
-            print(f"player{player} tricks {card_text}.")
+                decisions[players == player] = agent_decision
 
-            cards_tricked[player] = card
-            self.board.cards[np.array([0, 1, 2]), selected_card] = np.array([CARD_TRICKED, player, turn_num * 5 + player_index])
+            # Mark the cards as already put.
+            self.board.cards[decisions, 0] = CARD_TRICKED
+            self.board.cards[decisions, 2] = turn_num * 5 + player_index
 
+            # Record the cards chosen.
+            decisions = decisions.astype(int)
+            decisions_arg = np.argmax(decisions, axis=1)
+            cards_tricked[:, player_index] = decisions_arg
+
+            # Write cards to the log.
+            self.log(lambda idx: f"player{players[idx]} puts {card_to_str(np.array([decisions_arg[idx] // 13, decisions_arg[idx] % 13]))}.")
+
+            # Note a suit of the lead.
+            # Refer the declaration if the lead is a joker.
             if player_index == 0:
-                suit = card // 13
-                if suit == SUIT_JOKER:
-                    suit = self.board.decl[0]
-                self.board.lead[1] = suit
+                suits = decisions_arg // 13
+                suits[suits == SUIT_JOKER] = self.board.decl[suits == SUIT_JOKER, 0]
+                self.board.lead[:, 1] = suits
 
-        winner = self.board.get_trick_winner(cards_tricked, first_player)
-        print(f"player{winner} wins the trick.")
+        # Calculate the winners.
+        winners = (self.board.get_trick_winner(cards_tricked) + first_players) % 5
 
-        self.board.lead = np.array([winner, SUIT_JOKER])
-        self.board.taken[winner] += np.count_nonzero(cards_tricked % 13 >= (10 - 2))
+        self.log(lambda idx: f"player{winners[idx]} wins the trick.")
+
+        # Initialize info of lead.
+        self.board.lead[:, 0] = winners
+        self.board.lead[:, 1] = SUIT_JOKER
+
+        # Add scores.
+        taken = np.count_nonzero(cards_tricked % 13 >= (10 - 2), axis=1)
+        for idx in range(self.board_num):
+            self.board.taken[idx, winners[idx]] += taken[idx]
 
     def game(self) -> None:
         self.decide_napoleon()

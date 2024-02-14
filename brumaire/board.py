@@ -123,7 +123,7 @@ class BoardData:
     def get_players_hands(self, player: int) -> NDIntArray:
         return self.get_hands(np.ones(self.board_num, dtype=np.int64) * player)
 
-    def get_hand_filter(self, player: int) -> np.ndarray:
+    def get_hand_filter(self, player: int) -> NDIntArray:
         lead_suit = self.lead[:, 1]
         is_trump: NDBoolArray = self.decl[:, 0] == lead_suit
 
@@ -136,16 +136,13 @@ class BoardData:
         nothing = ~np.any(possible_cards, axis=1)
         possible_cards[nothing] = hands[nothing]
 
-        hand_filter = np.zeros((self.board_num, 10))
-        for idx in range(self.board_num):
-            players = self.cards[idx, possible_cards[idx], 2].astype(np.int64)
-            hand_filter[idx] = np.sum(np.eye(10)[players], axis=0)
+        return possible_cards
 
-        return hand_filter
-
-    def get_trick_winner(self, cards: np.ndarray, first_player: int) -> int:
-        trump = self.decl[0].astype(np.int64)
-        lead_suit = self.lead[1].astype(np.int64)
+    def get_trick_winner(self, cards: NDIntArray) -> NDIntArray:
+        trump = self.decl[:, 0]
+        lead_suit = self.lead[:, 1]
+        scores = cards.copy()
+        suits = cards // 13
 
         # SPADE A
         almighty_card = SUIT_SPADE * 13 + (1 - 2 + 13)
@@ -154,43 +151,42 @@ class BoardData:
         # TRUMP J
         main_jack = trump * 13 + (11 - 2)
         # Flipped TRUMP J
-        if trump == SUIT_SPADE:
-            sub_jack = SUIT_CLUB * 13 + (11 - 2)
-        elif trump == SUIT_HEART:
-            sub_jack = SUIT_DIAMOND * 13 + (11 - 2)
-        elif trump == SUIT_DIAMOND:
-            sub_jack = SUIT_HEART * 13 + (11 - 2)
-        else:
-            assert trump == SUIT_CLUB
-            sub_jack = SUIT_SPADE * 13 + (11 - 2)
+        sub_jack = np.zeros(self.board_num)
+        sub_jack[trump == SUIT_SPADE] = SUIT_CLUB * 13 + (11 - 2)
+        sub_jack[trump == SUIT_HEART] = SUIT_DIAMOND * 13 + (11 - 2)
+        sub_jack[trump == SUIT_DIAMOND] = SUIT_HEART * 13 + (11 - 2)
+        sub_jack[trump == SUIT_CLUB] = SUIT_SPADE * 13 + (11 - 2)
+        # LEAD 2
+        lead_two = lead_suit * 13 + (2 - 2)
 
-        if np.any(cards == almighty_card) and np.any(cards == partner_card):
-            return np.where(cards == partner_card)[0][0]
-        elif np.any(cards == almighty_card):
-            return np.where(cards == almighty_card)[0][0]
-        elif np.any(cards == main_jack):
-            return np.where(cards == main_jack)[0][0]
+        # Score the cards to determine the winners.
+        LEAD_BONUS = 100
+        TRUMP_BONUS = LEAD_BONUS * 3
+        SUB_JACK_BONUS = TRUMP_BONUS * 3
+        SAME_TWO_BONUS = SUB_JACK_BONUS * 3
+        MAIN_JACK_BONUS = SAME_TWO_BONUS * 3
+        ALMIGHTY_BONUS = MAIN_JACK_BONUS * 3
+        PARTNER_CARD_BONUS = ALMIGHTY_BONUS * 3
 
-        suit_list = cards.copy() // 13
-        suit_list[suit_list == SUIT_JOKER] = trump
-        if np.all(suit_list == suit_list[0]):
-            if np.any(cards == suit_list[0] * 13 + (2 - 2)):
-                return np.where(cards == suit_list[0] * 13 + (2 - 2))[0][0]
+        for idx in range(self.board_num):
+            scores[idx, suits[idx] == lead_suit[idx]] += LEAD_BONUS
+            if scores[idx, 0] == SUIT_JOKER:
+                scores[idx, 0] = LEAD_BONUS - 1
 
-        if np.any(cards == sub_jack):
-            return np.where(cards == sub_jack)[0][0]
+            scores[idx, suits[idx] == trump[idx]] += TRUMP_BONUS
+            scores[idx, cards[idx] == sub_jack[idx]] += SUB_JACK_BONUS
 
-        if np.any((trump * 13 <= cards) & (cards < (trump + 1) * 13)):
-            strong = np.amax(cards[(trump * 13 <= cards) & (cards < (trump + 1) * 13)])
-            return np.where(cards == strong)[0][0]
+            suits[idx, suits[idx] == SUIT_JOKER] = trump[idx]
+            if np.all(suits[idx] == lead_suit[idx]):
+                scores[idx, cards[idx] == lead_two[idx]] += SAME_TWO_BONUS
 
-        if cards[first_player] // 13 == SUIT_JOKER:
-            return first_player
+            scores[idx, cards[idx] == main_jack[idx]] += MAIN_JACK_BONUS
+            scores[idx, cards[idx] == almighty_card] += ALMIGHTY_BONUS
 
-        assert np.any((lead_suit * 13 <= cards) & (cards < (lead_suit + 1) * 13))
+            if np.any(cards[idx] == almighty_card) and np.any(cards[idx] == partner_card):
+                scores[idx, cards[idx] == partner_card] += PARTNER_CARD_BONUS
 
-        strong = np.amax(cards[(lead_suit * 13 <= cards) & (cards < (lead_suit + 1) * 13)])
-        return np.where(cards == strong)[0][0]
+        return np.argmax(scores, axis=1)
 
 def generate_board(board_num: int) -> BoardData:
     cards = np.zeros((board_num, 54, 4))

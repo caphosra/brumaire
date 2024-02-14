@@ -2,7 +2,7 @@ import numpy as np
 from numpy import ndarray
 
 from brumaire import *
-from brumaire.board import BoardData
+from brumaire.board import BoardData, NDIntArray
 
 class AgentBase:
     def declare_goal(self, board: BoardData) -> np.ndarray:
@@ -16,9 +16,12 @@ class AgentBase:
         decision[:, [0, 1, 2, 3]] = 1
         return decision
 
-    def put_card(self, board: BoardData) -> np.ndarray:
-        decision = np.zeros((board.board_num, 10))
-        decision[:, 0] = 1
+    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
+        assert board.board_num == hand_filter.shape[0]
+
+        decision = np.zeros((board.board_num, 54))
+        for idx in range(board.board_num):
+            decision[idx, np.argmax(hand_filter[idx])] = 1
         return decision
 
     def tell_reward(self, reward: float):
@@ -39,5 +42,10 @@ class RandomAgent(AgentBase):
         decision[:, choice] = 1.
         return decision
 
-    def put_card(self, board: BoardData) -> np.ndarray:
-        return np.repeat((np.eye(10)[np.random.randint(0, 10)])[None, :], board.board_num, axis=0)
+    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
+        decision = np.zeros((board.board_num, 54), dtype=int)
+        for idx in range(board.board_num):
+            possibilities = hand_filter[idx].astype(int) / np.sum(hand_filter[idx])
+            decided = np.random.choice(54, 1, p=possibilities)[0]
+            decision[idx, decided] = 1
+        return decision
