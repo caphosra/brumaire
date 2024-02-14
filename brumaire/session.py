@@ -4,6 +4,7 @@ from typing import List, Callable
 from . import *
 from brumaire.agent import AgentBase
 from brumaire.board import BoardData, generate_board
+from brumaire.record import Recorder
 
 def suit_to_str(suit: int) -> str:
     if suit == SUIT_CLUB:
@@ -46,6 +47,7 @@ class Game:
     agents: List[AgentBase]
     log_enabled: bool
     logs: List[List[str]]
+    recorder: Recorder
 
     def __init__(self, board_num: int, agents: List[AgentBase], log_enabled: bool = False) -> None:
         assert len(agents) == 5
@@ -58,6 +60,7 @@ class Game:
             self.clear_logs()
 
         self.init_board()
+        self.init_recorder()
 
     def clear_logs(self) -> None:
         assert self.log_enabled
@@ -66,6 +69,9 @@ class Game:
 
     def init_board(self) -> None:
         self.board = generate_board(self.board_num)
+
+    def init_recorder(self) -> None:
+        self.recorder = Recorder(self.board_num)
 
     def log(self, log_func: Callable[[int], str]) -> None:
         if self.log_enabled:
@@ -92,14 +98,16 @@ class Game:
 
             self.log(lambda idx: f"player{player} declared {card_to_str(declarations[idx, player, [0, 1]], False)}.")
 
+            self.recorder.first_boards[player] = board.to_vector()
+            self.recorder.declarations[player] = declarations[:, player, :]
+
         # Select a napoleon randomly.
         # The result will be dropped if at least one person wants to be.
         random_napoleon = np.amax(declarations[:, :, 1], axis=1) < 13
 
-        if self.log_enabled:
-            self.log(
-                lambda idx: "The napoleon will be selected randomly." if random_napoleon[idx] else "There is a valid goal."
-            )
+        self.log(
+            lambda idx: "The napoleon will be selected randomly." if random_napoleon[idx] else "There is a valid goal."
+        )
 
         randomly_selected_napoleon = \
             np.repeat(random_napoleon[:, None], 5, axis=1) \
@@ -217,6 +225,10 @@ class Game:
 
                 decisions[players == player] = agent_decision
 
+                # Record the decisions
+                self.recorder.boards[player, players == player, turn_num] = players_boards.to_vector()
+                self.recorder.decisions[player, players == player, turn_num] = agent_decision
+
             # Mark the cards as already put.
             self.board.cards[decisions, 0] = CARD_TRICKED
             self.board.cards[decisions, 2] = turn_num * 5 + player_index
@@ -249,6 +261,23 @@ class Game:
         taken = np.count_nonzero(cards_tricked % 13 >= (10 - 2), axis=1)
         for idx in range(self.board_num):
             self.board.taken[idx, winners[idx]] += taken[idx]
+
+    def check_result(self) -> None:
+        winners = np.zeros((5, self.board_num))
+        for idx in range(self.board_num):
+            napoleon_team = (self.board.roles[idx] == ROLE_NAPOLEON) | (self.board.roles[idx] == ROLE_ADJUTANT)
+
+            taken = self.board.taken[idx, napoleon_team]
+            if np.sum(taken) >= self.board.decl[idx, 1]:
+                winners[napoleon_team, idx] = 1
+            else:
+                winners[~napoleon_team, idx] = 1
+
+        self.log(
+            lambda idx: f"player{", player".join(map(lambda x: str(x), list(np.argwhere(winners[:, idx] == 1)[:, 0])))} win(s)."
+        )
+
+        self.recorder.winners = winners
 
     def game(self) -> None:
         self.decide_napoleon()

@@ -4,10 +4,6 @@ from typing import Self
 
 from . import *
 
-type NDIntArray = npt.NDArray[np.int64]
-type NDFloatArray = npt.NDArray[np.float32]
-type NDBoolArray = npt.NDArray[np.bool_]
-
 BOARD_VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
 
 class BoardData:

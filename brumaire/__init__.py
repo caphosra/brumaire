@@ -1,3 +1,10 @@
+import numpy as np
+import numpy.typing as npt
+
+type NDIntArray = npt.NDArray[np.int64]
+type NDFloatArray = npt.NDArray[np.float32]
+type NDBoolArray = npt.NDArray[np.bool_]
+
 SUIT_CLUB = 0
 SUIT_DIAMOND = 1
 SUIT_HEART = 2
