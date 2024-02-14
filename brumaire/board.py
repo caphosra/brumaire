@@ -5,7 +5,10 @@ from typing import Self
 from . import *
 
 type NDIntArray = npt.NDArray[np.int64]
+type NDFloatArray = npt.NDArray[np.float32]
 type NDBoolArray = npt.NDArray[np.bool_]
+
+BOARD_VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
 
 class BoardData:
     board_num: int
@@ -40,8 +43,32 @@ class BoardData:
             self.suit_transform[suit, (suit * 13):((suit + 1) * 13)] = True
         self.suit_transform[SUIT_JOKER, :] = True
 
-    def get_card_status(self, suit: int, num: int) -> NDIntArray:
-        return self.cards[:, :, suit * 13 + num]
+    def to_vector(self) -> NDFloatArray:
+        """
+        Converts this into a float vector.
+        """
+
+        cards = self.cards.copy()
+        cards[:, :, 0] /= 2.
+        cards[:, :, 1] /= 4.
+        cards[:, :, 2] /= 50.
+        cards = cards.reshape((self.board_num, 54 * 4))
+
+        taken = self.taken.copy()
+        taken /= 20.
+
+        roles = self.roles.copy().astype(float)
+        roles /= 3.
+
+        decl = self.decl.copy().astype(float)
+        decl[:, 0] /= 3.
+        decl[:, 1] = (decl[:, 1] - 12.) / 8.
+
+        lead = self.lead.copy().astype(float)
+        lead[:, 0] /= 4.
+        lead[:, 1] /= 3.
+
+        return np.concatenate((cards, taken, roles, decl, lead), axis=1)
 
     def get_napoleon(self) -> NDIntArray:
         """
@@ -209,5 +236,40 @@ def generate_board(board_num: int) -> BoardData:
 
         # Reset parameters of cards which no one holds.
         cards[idx, cards[idx, :, 1] == 5] = np.array([CARD_UNKNOWN, 0, 0, 0])
+
+    return BoardData(board_num, cards, taken, roles, decl, lead)
+
+def board_from_vector(vec: NDFloatArray) -> BoardData:
+    """
+    An invert method of `to_vector`.
+    """
+
+    assert vec.shape[1] == BOARD_VEC_SIZE
+
+    board_num = vec.shape[0]
+
+    cards = vec[:, 0:54 * 4].reshape((board_num, 54, 4))
+    cards[:, :, 0] *= 2
+    cards[:, :, 1] *= 4
+    cards[:, :, 2] *= 50
+    cards = cards.astype(int)
+
+    taken = vec[:, 54 * 4:54 * 4 + 5]
+    taken *= 20
+    taken = taken.astype(int)
+
+    roles = vec[:, 54 * 4 + 5:54 * 4 + 5 + 5]
+    roles *= 3
+    roles = roles.astype(int)
+
+    decl = vec[:, 54 * 4 + 5 + 5:54 * 4 + 5 + 5 + 2]
+    decl[:, 0] *= 3
+    decl[:, 1] = decl[:, 1] * 8 + 12
+    decl = decl.astype(int)
+
+    lead = vec[:, 54 * 4 + 5 + 5 + 2:54 * 4 + 5 + 5 + 2 + 2]
+    lead[:, 0] *= 4.
+    lead[:, 1] *= 3.
+    lead = lead.astype(int)
 
     return BoardData(board_num, cards, taken, roles, decl, lead)
