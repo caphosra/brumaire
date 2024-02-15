@@ -227,6 +227,7 @@ class Game:
 
                 # Record the decisions
                 self.recorder.boards[player, players == player, turn_num] = players_boards.to_vector()
+                self.recorder.hand_filters[player, players == player, turn_num] = hand_filter
                 self.recorder.decisions[player, players == player, turn_num] = agent_decision
 
             # Mark the cards as already put.

@@ -10,6 +10,8 @@ dependencies = [
     "pygame>=2.5.2",
     "numpy>=1.24.4",
     "torch==2.2.0+cu121",
+    "tqdm>=4.66.2",
+    "ipywidgets>=8.1.2",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"

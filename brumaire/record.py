@@ -19,6 +19,11 @@ class Recorder:
     shape: `(5, board_num, TURN, BOARD_VEC_SIZE)`
     """
 
+    hand_filters: NDIntArray
+    """
+    shape: `(5, board_num, TURN, 54)`
+    """
+
     decisions: NDIntArray
     """
     shape: `(5, board_num, TURN, 54)`
@@ -39,6 +44,7 @@ class Recorder:
         self.declarations = np.zeros((5, board_num, 4))
 
         self.boards = np.zeros((5, board_num, TURN, BOARD_VEC_SIZE))
+        self.hand_filters = np.zeros((5, board_num, TURN, 54))
         self.decisions = np.zeros((5, board_num, TURN, 54))
         self.rewards = np.zeros((5, board_num, TURN))
 
