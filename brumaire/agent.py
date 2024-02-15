@@ -3,6 +3,7 @@ from numpy import ndarray
 
 from brumaire import *
 from brumaire.board import BoardData, NDIntArray
+from brumaire.model import BrumaireController
 
 class AgentBase:
     def declare_goal(self, board: BoardData) -> np.ndarray:
@@ -49,3 +50,28 @@ class RandomAgent(AgentBase):
             decided = np.random.choice(54, 1, p=possibilities)[0]
             decision[idx, decided] = 1
         return decision
+
+class BrumaireAgent(RandomAgent):
+    controller: BrumaireController
+    epsilon: float
+
+    def __init__(self, controller: BrumaireController, epsilon: float = 0.) -> None:
+        super().__init__()
+
+        self.controller = controller
+        self.epsilon = epsilon
+
+    def declare_goal(self, board: BoardData) -> ndarray:
+        return super().declare_goal(board)
+
+    def discard(self, board: BoardData) -> np.ndarray:
+        return super().discard(board)
+
+    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
+        samples = np.random.rand(board.board_num)
+        board_vec = board.to_vector()
+
+        selected = np.zeros((board.board_num, 54))
+        selected[samples > self.epsilon] = self.controller.make_decision(board_vec[samples > self.epsilon], hand_filter[samples > self.epsilon])
+        selected[samples <= self.epsilon] = super().put_card(board.slice_boards(samples <= self.epsilon), hand_filter[samples <= self.epsilon])
+        return selected

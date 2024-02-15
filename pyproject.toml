@@ -9,6 +9,7 @@ dependencies = [
     "ipykernel>=6.29.0",
     "pygame>=2.5.2",
     "numpy>=1.24.4",
+    "torch==2.2.0+cu121",
 ]
 readme = "README.md"
 requires-python = ">= 3.8"
@@ -28,3 +29,8 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["brumaire"]
+
+[[tool.rye.sources]]
+name = "torch"
+url = "https://download.pytorch.org/whl/cu121"
+type = "index"
