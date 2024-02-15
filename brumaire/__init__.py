@@ -27,6 +27,11 @@ REQ_ADJ_N = 3
 REQ_DISC = 4
 REQ_TRICK = 5
 
+RWD_WINS_TRICK = 0.02
+
+RWD_NAPOLEON_WINS = 2
+RWD_ALLY_WINS = 1
+
 from . import agent
 from . import board
 from . import session

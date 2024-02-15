@@ -262,6 +262,21 @@ class Game:
         for idx in range(self.board_num):
             self.board.taken[idx, winners[idx]] += taken[idx]
 
+        # Give rewards to the agents.
+        # Since some hidden info can be retrieved from the rewards, these are not reported to them.
+        rewards = np.zeros((self.board_num, 5))
+        for idx in range(self.board_num):
+            winners_role = self.board.roles[idx, winners[idx]]
+            if winners_role == ROLE_NAPOLEON or winners_role == ROLE_ADJUTANT:
+                rewards[idx, self.board.roles[idx] == ROLE_ALLY] -= taken[idx] * RWD_WINS_TRICK
+                rewards[idx, self.board.roles[idx] == ROLE_NAPOLEON] += taken[idx] * RWD_WINS_TRICK
+                rewards[idx, self.board.roles[idx] == ROLE_ADJUTANT] += taken[idx] * RWD_WINS_TRICK
+            else:
+                rewards[idx, self.board.roles[idx] == ROLE_ALLY] += taken[idx] * RWD_WINS_TRICK
+                rewards[idx, self.board.roles[idx] == ROLE_NAPOLEON] -= taken[idx] * RWD_WINS_TRICK
+                rewards[idx, self.board.roles[idx] == ROLE_ADJUTANT] -= taken[idx] * RWD_WINS_TRICK
+        self.recorder.rewards[:, :, turn_num] = rewards.T
+
     def check_result(self) -> None:
         winners = np.zeros((5, self.board_num))
         for idx in range(self.board_num):
@@ -270,8 +285,10 @@ class Game:
             taken = self.board.taken[idx, napoleon_team]
             if np.sum(taken) >= self.board.decl[idx, 1]:
                 winners[napoleon_team, idx] = 1
+                self.recorder.rewards[napoleon_team, idx, 9] += RWD_NAPOLEON_WINS
             else:
                 winners[~napoleon_team, idx] = 1
+                self.recorder.rewards[~napoleon_team, idx, 9] += RWD_ALLY_WINS
 
         self.log(
             lambda idx: f"player{", player".join(map(lambda x: str(x), list(np.argwhere(winners[:, idx] == 1)[:, 0])))} win(s)."

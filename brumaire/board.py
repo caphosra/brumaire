@@ -74,6 +74,9 @@ class BoardData:
 
         return np.argwhere(self.roles == ROLE_NAPOLEON)[:, 1]
 
+    def is_adj_revealed(self) -> NDBoolArray:
+        return self.cards[self.cards[:, :, 3] == 1, 0] == CARD_TRICKED
+
     def slice_boards(self, board_filter: NDBoolArray) -> Self:
         board_num = np.sum(board_filter)
 
