@@ -62,7 +62,7 @@ class BoardData:
 
         lead = self.lead.copy().astype(float)
         lead[:, 0] /= 4.
-        lead[:, 1] /= 3.
+        lead[:, 1] /= 4.
 
         return np.concatenate((cards, taken, roles, decl, lead), axis=1)
 
@@ -268,7 +268,7 @@ def board_from_vector(vec: NDFloatArray) -> BoardData:
 
     lead = vec[:, 54 * 4 + 5 + 5 + 2:54 * 4 + 5 + 5 + 2 + 2]
     lead[:, 0] *= 4.
-    lead[:, 1] *= 3.
+    lead[:, 1] *= 4.
     lead = lead.astype(int)
 
     return BoardData(board_num, cards, taken, roles, decl, lead)
