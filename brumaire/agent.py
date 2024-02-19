@@ -5,12 +5,15 @@ from brumaire import *
 from brumaire.board import BoardData, NDIntArray
 from brumaire.model import BrumaireController
 
+
 class AgentBase:
     def declare_goal(self, board: BoardData) -> np.ndarray:
         """
         Declare the goal. It will returns a ndarray shaped (4,)
         """
-        return np.repeat(np.array([[SUIT_SPADE, 12, SUIT_SPADE, 14 - 2]]), board.board_num, axis=0)
+        return np.repeat(
+            np.array([[SUIT_SPADE, 12, SUIT_SPADE, 14 - 2]]), board.board_num, axis=0
+        )
 
     def discard(self, board: BoardData) -> np.ndarray:
         decision = np.zeros((board.board_num, 14))
@@ -28,6 +31,7 @@ class AgentBase:
     def tell_reward(self, reward: float):
         pass
 
+
 class RandomAgent(AgentBase):
     decl_p: float
 
@@ -35,12 +39,14 @@ class RandomAgent(AgentBase):
         super().__init__()
 
     def declare_goal(self, board: BoardData) -> ndarray:
-        return np.random.randint([0, 12, 0, 0], [4, 14, 4, 13], size=(board.board_num, 4))
+        return np.random.randint(
+            [0, 12, 0, 0], [4, 14, 4, 13], size=(board.board_num, 4)
+        )
 
     def discard(self, board: BoardData) -> np.ndarray:
         decision = np.zeros((board.board_num, 14))
         choice = np.random.choice(np.arange(14), 4, replace=False)
-        decision[:, choice] = 1.
+        decision[:, choice] = 1.0
         return decision
 
     def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
@@ -51,11 +57,12 @@ class RandomAgent(AgentBase):
             decision[idx, decided] = 1
         return decision
 
+
 class BrumaireAgent(RandomAgent):
     controller: BrumaireController
     epsilon: float
 
-    def __init__(self, controller: BrumaireController, epsilon: float = 0.) -> None:
+    def __init__(self, controller: BrumaireController, epsilon: float = 0.0) -> None:
         super().__init__()
 
         self.controller = controller
@@ -72,6 +79,11 @@ class BrumaireAgent(RandomAgent):
         board_vec = board.to_vector()
 
         selected = np.zeros((board.board_num, 54))
-        selected[samples > self.epsilon] = self.controller.make_decision(board_vec[samples > self.epsilon], hand_filter[samples > self.epsilon])
-        selected[samples <= self.epsilon] = super().put_card(board.slice_boards(samples <= self.epsilon), hand_filter[samples <= self.epsilon])
+        selected[samples > self.epsilon] = self.controller.make_decision(
+            board_vec[samples > self.epsilon], hand_filter[samples > self.epsilon]
+        )
+        selected[samples <= self.epsilon] = super().put_card(
+            board.slice_boards(samples <= self.epsilon),
+            hand_filter[samples <= self.epsilon],
+        )
         return selected

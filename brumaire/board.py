@@ -6,6 +6,7 @@ from . import *
 
 BOARD_VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
 
+
 class BoardData:
     board_num: int
     cards: NDIntArray
@@ -20,7 +21,15 @@ class BoardData:
     [<a player who tricked the lead>, <a suit of the lead>]
     """
 
-    def __init__(self, board_num: int, cards: NDIntArray, taken: NDIntArray, roles: NDIntArray, decl: NDIntArray, lead: NDIntArray) -> Self:
+    def __init__(
+        self,
+        board_num: int,
+        cards: NDIntArray,
+        taken: NDIntArray,
+        roles: NDIntArray,
+        decl: NDIntArray,
+        lead: NDIntArray,
+    ) -> Self:
         assert cards.shape == (board_num, 54, 4)
         assert taken.shape == (board_num, 5)
         assert roles.shape == (board_num, 5)
@@ -36,7 +45,7 @@ class BoardData:
 
         self.suit_transform = np.zeros((5, 54), dtype=bool)
         for suit in range(4):
-            self.suit_transform[suit, (suit * 13):((suit + 1) * 13)] = True
+            self.suit_transform[suit, (suit * 13) : ((suit + 1) * 13)] = True
         self.suit_transform[SUIT_JOKER, :] = True
 
     def to_vector(self) -> NDFloatArray:
@@ -45,24 +54,24 @@ class BoardData:
         """
 
         cards = self.cards.copy()
-        cards[:, :, 0] /= 2.
-        cards[:, :, 1] /= 4.
-        cards[:, :, 2] /= 50.
+        cards[:, :, 0] /= 2.0
+        cards[:, :, 1] /= 4.0
+        cards[:, :, 2] /= 50.0
         cards = cards.reshape((self.board_num, 54 * 4))
 
         taken = self.taken.copy()
-        taken /= 20.
+        taken /= 20.0
 
         roles = self.roles.copy().astype(float)
-        roles /= 3.
+        roles /= 3.0
 
         decl = self.decl.copy().astype(float)
-        decl[:, 0] /= 3.
-        decl[:, 1] = (decl[:, 1] - 12.) / 8.
+        decl[:, 0] /= 3.0
+        decl[:, 1] = (decl[:, 1] - 12.0) / 8.0
 
         lead = self.lead.copy().astype(float)
-        lead[:, 0] /= 4.
-        lead[:, 1] /= 4.
+        lead[:, 0] /= 4.0
+        lead[:, 1] /= 4.0
 
         return np.concatenate((cards, taken, roles, decl, lead), axis=1)
 
@@ -106,7 +115,12 @@ class BoardData:
         lead[:, 0] = (lead[:, 0] - players) % 5
 
         # Hide the role information if the adjutant card has not been public.
-        is_role_unknown = np.any((cards[:, :, 0] == CARD_IN_HAND) & ((cards[:, :, 1].T == players).T) & (cards[:, :, 3] == 1), axis=1)
+        is_role_unknown = np.any(
+            (cards[:, :, 0] == CARD_IN_HAND)
+            & ((cards[:, :, 1].T == players).T)
+            & (cards[:, :, 3] == 1),
+            axis=1,
+        )
         is_role_unknown = np.repeat(np.reshape(is_role_unknown, (-1, 1)), 5, axis=1)
 
         assert np.shape(is_role_unknown) == (self.board_num, 5)
@@ -124,7 +138,9 @@ class BoardData:
         # Mark unknown the cards which the others have.
         assert CARD_UNKNOWN == 0
         others_own = (cards[:, :, 0] == CARD_IN_HAND) & (cards[:, :, 1] != 0)
-        cards[others_own] = np.repeat(np.array([[CARD_UNKNOWN, 0, 0, 0]]), len(cards[others_own]), axis=0)
+        cards[others_own] = np.repeat(
+            np.array([[CARD_UNKNOWN, 0, 0, 0]]), len(cards[others_own]), axis=0
+        )
 
         return BoardData(self.board_num, cards, taken, roles, declaration, lead)
 
@@ -135,7 +151,9 @@ class BoardData:
         return self.suit_transform[suits]
 
     def get_hand(self, idx: int, player: int) -> NDBoolArray:
-        return (self.cards[idx, :, 0] == CARD_IN_HAND) & (self.cards[idx, :, 1] == player)
+        return (self.cards[idx, :, 0] == CARD_IN_HAND) & (
+            self.cards[idx, :, 1] == player
+        )
 
     def get_hands(self, players: NDIntArray) -> NDBoolArray:
         """
@@ -144,7 +162,9 @@ class BoardData:
 
         assert players.shape == (self.board_num,)
 
-        return (self.cards[:, :, 0] == CARD_IN_HAND) & (self.cards[:, :, 1].T == players).T
+        return (self.cards[:, :, 0] == CARD_IN_HAND) & (
+            self.cards[:, :, 1].T == players
+        ).T
 
     def get_players_hands(self, player: int) -> NDIntArray:
         return self.get_hands(np.ones(self.board_num, dtype=np.int64) * player)
@@ -209,10 +229,13 @@ class BoardData:
             scores[idx, cards[idx] == main_jack[idx]] += MAIN_JACK_BONUS
             scores[idx, cards[idx] == almighty_card] += ALMIGHTY_BONUS
 
-            if np.any(cards[idx] == almighty_card) and np.any(cards[idx] == partner_card):
+            if np.any(cards[idx] == almighty_card) and np.any(
+                cards[idx] == partner_card
+            ):
                 scores[idx, cards[idx] == partner_card] += PARTNER_CARD_BONUS
 
         return np.argmax(scores, axis=1)
+
 
 def generate_board(board_num: int) -> BoardData:
     cards = np.zeros((board_num, 54, 4))
@@ -238,6 +261,7 @@ def generate_board(board_num: int) -> BoardData:
 
     return BoardData(board_num, cards, taken, roles, decl, lead)
 
+
 def board_from_vector(vec: NDFloatArray) -> BoardData:
     """
     An invert method of `to_vector`.
@@ -247,28 +271,28 @@ def board_from_vector(vec: NDFloatArray) -> BoardData:
 
     board_num = vec.shape[0]
 
-    cards = vec[:, 0:54 * 4].reshape((board_num, 54, 4))
+    cards = vec[:, 0 : 54 * 4].reshape((board_num, 54, 4))
     cards[:, :, 0] *= 2
     cards[:, :, 1] *= 4
     cards[:, :, 2] *= 50
     cards = cards.astype(int)
 
-    taken = vec[:, 54 * 4:54 * 4 + 5]
+    taken = vec[:, 54 * 4 : 54 * 4 + 5]
     taken *= 20
     taken = taken.astype(int)
 
-    roles = vec[:, 54 * 4 + 5:54 * 4 + 5 + 5]
+    roles = vec[:, 54 * 4 + 5 : 54 * 4 + 5 + 5]
     roles *= 3
     roles = roles.astype(int)
 
-    decl = vec[:, 54 * 4 + 5 + 5:54 * 4 + 5 + 5 + 2]
+    decl = vec[:, 54 * 4 + 5 + 5 : 54 * 4 + 5 + 5 + 2]
     decl[:, 0] *= 3
     decl[:, 1] = decl[:, 1] * 8 + 12
     decl = decl.astype(int)
 
-    lead = vec[:, 54 * 4 + 5 + 5 + 2:54 * 4 + 5 + 5 + 2 + 2]
-    lead[:, 0] *= 4.
-    lead[:, 1] *= 4.
+    lead = vec[:, 54 * 4 + 5 + 5 + 2 : 54 * 4 + 5 + 5 + 2 + 2]
+    lead[:, 0] *= 4.0
+    lead[:, 1] *= 4.0
     lead = lead.astype(int)
 
     return BoardData(board_num, cards, taken, roles, decl, lead)

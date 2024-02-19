@@ -6,6 +6,7 @@ from brumaire.board import BOARD_VEC_SIZE
 
 TURN = 10
 
+
 class Recorder:
     first_boards: NDFloatArray
     """
@@ -73,7 +74,9 @@ class Recorder:
     def gen_batch(self, batch_size: int, test_size: int) -> Tuple[Recorder, Recorder]:
         assert batch_size + test_size <= self._board_num
 
-        choice = np.random.choice(self._board_num, batch_size + test_size, replace=False)
+        choice = np.random.choice(
+            self._board_num, batch_size + test_size, replace=False
+        )
         batch_choice = choice[0:batch_size]
         test_choice = choice[batch_size:]
 

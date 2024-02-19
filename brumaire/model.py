@@ -11,6 +11,7 @@ LINEAR1_NODE_NUM = 5000
 LINEAR2_NODE_NUM = 2000
 LINEAR3_NODE_NUM = 1000
 
+
 class BrumaireModel(torch.nn.Module):
     layer1: torch.nn.Linear
     layer2: torch.nn.Linear
@@ -31,19 +32,24 @@ class BrumaireModel(torch.nn.Module):
         x = F.relu(self.layer3(x))
         return self.layer4(x)
 
+
 class BrumaireController:
     model: BrumaireModel
     target: BrumaireModel
     optimizer: torch.optim.Optimizer
     device: Any
 
-    def __init__(self, device, ita: float=0.001) -> None:
+    def __init__(self, device, ita: float = 0.001) -> None:
         self.model = BrumaireModel(device)
         self.target = BrumaireModel(device)
-        self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=ita, amsgrad=True)
+        self.optimizer = torch.optim.AdamW(
+            self.model.parameters(), lr=ita, amsgrad=True
+        )
         self.device = device
 
-    def make_decision(self, board_vec: NDFloatArray, hand_filter: NDIntArray) -> NDIntArray:
+    def make_decision(
+        self, board_vec: NDFloatArray, hand_filter: NDIntArray
+    ) -> NDIntArray:
         board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
         hand_filter = torch.tensor(hand_filter, dtype=torch.float32, device=self.device)
 
@@ -68,7 +74,9 @@ class BrumaireController:
         rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
 
         hand_filters = recorder.hand_filters.reshape((-1, 10, 54))
-        hand_filters = torch.tensor(hand_filters, dtype=torch.float32, device=self.device)
+        hand_filters = torch.tensor(
+            hand_filters, dtype=torch.float32, device=self.device
+        )
 
         hand_filters[hand_filters == 0] = -torch.inf
         hand_filters[hand_filters == 1] = 0
@@ -81,25 +89,44 @@ class BrumaireController:
                 next_hand_filters = hand_filters[:, turn + 1, :]
 
                 with torch.no_grad():
-                    evaluated: torch.Tensor = self.target(next_boards) + next_hand_filters
+                    evaluated: torch.Tensor = (
+                        self.target(next_boards) + next_hand_filters
+                    )
                     estimations[:, turn] += evaluated.max(dim=1)[0] * gamma
 
         return estimations
 
-    def train(self, recorder: Recorder, batch_size: int, test_size: int, epoch:int = 100, gamma: float = 0.99):
+    def train(
+        self,
+        recorder: Recorder,
+        batch_size: int,
+        test_size: int,
+        epoch: int = 100,
+        gamma: float = 0.99,
+    ):
         batch_data, test_data = recorder.gen_batch(batch_size, test_size)
 
         batch_boards = batch_data.boards.reshape((-1, BOARD_VEC_SIZE))
-        batch_boards = torch.tensor(batch_boards, dtype=torch.float32, device=self.device)
+        batch_boards = torch.tensor(
+            batch_boards, dtype=torch.float32, device=self.device
+        )
 
         test_boards = test_data.boards.reshape((-1, BOARD_VEC_SIZE))
         test_boards = torch.tensor(test_boards, dtype=torch.float32, device=self.device)
 
         batch_decisions = batch_data.decisions.reshape((-1, 54))
-        batch_decisions = torch.tensor(np.argmax(batch_decisions, axis=1)[:, None], dtype=torch.int64, device=self.device)
+        batch_decisions = torch.tensor(
+            np.argmax(batch_decisions, axis=1)[:, None],
+            dtype=torch.int64,
+            device=self.device,
+        )
 
         test_decisions = test_data.decisions.reshape((-1, 54))
-        test_decisions = torch.tensor(np.argmax(test_decisions, axis=1)[:, None], dtype=torch.int64, device=self.device)
+        test_decisions = torch.tensor(
+            np.argmax(test_decisions, axis=1)[:, None],
+            dtype=torch.int64,
+            device=self.device,
+        )
 
         for _ in tqdm(range(epoch)):
             self.copy_target()
@@ -118,7 +145,7 @@ class BrumaireController:
             self.optimizer.zero_grad()
             loss.backward()
 
-            torch.nn.utils.clip_grad_value_(self.model.parameters(), 10.)
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 10.0)
             self.optimizer.step()
 
             print(f"train loss: {loss.item()}")
