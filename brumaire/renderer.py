@@ -2,8 +2,8 @@ from typing import List
 from PIL import Image, ImageDraw, ImageFont
 import os
 
-from . import *
 from brumaire.board import BoardData
+from brumaire.constants import CARD_IN_HAND, CARD_TRICKED, CARD_UNKNOWN
 
 IMAGE_DIRECTORY = "./img"
 FONT_FILE = "./fonts/NotoSansJP-Regular.ttf"

@@ -1,8 +1,8 @@
 import numpy as np
 from numpy import ndarray
 
-from brumaire import *
-from brumaire.board import BoardData, NDIntArray
+from brumaire.board import BoardData
+from brumaire.constants import SUIT_SPADE, NDIntArray
 from brumaire.model import BrumaireController
 
 

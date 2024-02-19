@@ -1,8 +1,23 @@
 import numpy as np
-import numpy.typing as npt
 from typing import Self
 
-from . import *
+from brumaire.constants import (
+    CARD_IN_HAND,
+    CARD_TRICKED,
+    CARD_UNKNOWN,
+    NDBoolArray,
+    NDFloatArray,
+    NDIntArray,
+    ROLE_ADJUTANT,
+    ROLE_ALLY,
+    ROLE_NAPOLEON,
+    ROLE_UNKNOWN,
+    SUIT_CLUB,
+    SUIT_DIAMOND,
+    SUIT_HEART,
+    SUIT_JOKER,
+    SUIT_SPADE,
+)
 
 BOARD_VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
 

@@ -1,9 +1,25 @@
 import numpy as np
 from typing import List, Callable
 
-from . import *
 from brumaire.agent import AgentBase
 from brumaire.board import BoardData, generate_board
+from brumaire.constants import (
+    CARD_IN_HAND,
+    CARD_TRICKED,
+    CARD_UNKNOWN,
+    ROLE_ADJUTANT,
+    ROLE_ALLY,
+    ROLE_NAPOLEON,
+    ROLE_UNKNOWN,
+    RWD_ALLY_WINS,
+    RWD_NAPOLEON_WINS,
+    RWD_WINS_TRICK,
+    SUIT_CLUB,
+    SUIT_DIAMOND,
+    SUIT_HEART,
+    SUIT_JOKER,
+    SUIT_SPADE,
+)
 from brumaire.record import Recorder
 
 

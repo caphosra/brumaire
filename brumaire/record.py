@@ -1,8 +1,9 @@
 from __future__ import annotations
+import numpy as np
 from typing import Tuple
 
-from . import *
 from brumaire.board import BOARD_VEC_SIZE
+from brumaire.constants import NDFloatArray, NDIntArray
 
 TURN = 10
 

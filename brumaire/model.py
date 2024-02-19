@@ -1,10 +1,11 @@
+import numpy as np
 from typing import Any
 import torch
 import torch.nn.functional as F
 from tqdm import tqdm_notebook as tqdm
 
-from . import *
 from brumaire.board import BOARD_VEC_SIZE
+from brumaire.constants import NDIntArray, NDFloatArray
 from brumaire.record import Recorder
 
 LINEAR1_NODE_NUM = 5000
