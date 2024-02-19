@@ -7,8 +7,8 @@ from . import *
 from brumaire.board import BOARD_VEC_SIZE
 from brumaire.record import Recorder
 
-LINEAR1_NODE_NUM = 1000
-LINEAR2_NODE_NUM = 1000
+LINEAR1_NODE_NUM = 5000
+LINEAR2_NODE_NUM = 2000
 LINEAR3_NODE_NUM = 1000
 
 class BrumaireModel(torch.nn.Module):
@@ -33,11 +33,13 @@ class BrumaireModel(torch.nn.Module):
 
 class BrumaireController:
     model: BrumaireModel
+    target: BrumaireModel
     optimizer: torch.optim.Optimizer
     device: Any
 
     def __init__(self, device, ita: float=0.001) -> None:
         self.model = BrumaireModel(device)
+        self.target = BrumaireModel(device)
         self.optimizer = torch.optim.AdamW(self.model.parameters(), lr=ita, amsgrad=True)
         self.device = device
 
@@ -54,7 +56,11 @@ class BrumaireController:
 
         return np.eye(54)[evaluated]
 
-    def train(self, recorder: Recorder, epoch:int = 100, gamma: float = 0.99):
+    def copy_target(self) -> None:
+        self.target.load_state_dict(self.model.state_dict())
+        self.target.eval()
+
+    def estimate_Q_value(self, recorder: Recorder, gamma: float) -> torch.Tensor:
         boards = recorder.boards.reshape((-1, 10, BOARD_VEC_SIZE))
         boards = torch.tensor(boards, dtype=torch.float32, device=self.device)
 
@@ -67,35 +73,65 @@ class BrumaireController:
         hand_filters[hand_filters == 0] = -torch.inf
         hand_filters[hand_filters == 1] = 0
 
-        decisions = recorder.decisions.reshape((-1, 10, 54))
+        estimations = torch.zeros((recorder.get_data_size(), 10), device=self.device)
+        for turn in range(10):
+            estimations[:, turn] = rewards[:, turn]
+            if turn < 10 - 1:
+                next_boards = boards[:, turn + 1, :]
+                next_hand_filters = hand_filters[:, turn + 1, :]
+
+                with torch.no_grad():
+                    evaluated: torch.Tensor = self.target(next_boards) + next_hand_filters
+                    estimations[:, turn] += evaluated.max(dim=1)[0] * gamma
+
+        return estimations
+
+    def train(self, recorder: Recorder, batch_size: int, test_size: int, epoch:int = 100, gamma: float = 0.99):
+        batch_data, test_data = recorder.gen_batch(batch_size, test_size)
+
+        batch_boards = batch_data.boards.reshape((-1, BOARD_VEC_SIZE))
+        batch_boards = torch.tensor(batch_boards, dtype=torch.float32, device=self.device)
+
+        test_boards = test_data.boards.reshape((-1, BOARD_VEC_SIZE))
+        test_boards = torch.tensor(test_boards, dtype=torch.float32, device=self.device)
+
+        batch_decisions = batch_data.decisions.reshape((-1, 54))
+        batch_decisions = torch.tensor(np.argmax(batch_decisions, axis=1)[:, None], dtype=torch.int64, device=self.device)
+
+        test_decisions = test_data.decisions.reshape((-1, 54))
+        test_decisions = torch.tensor(np.argmax(test_decisions, axis=1)[:, None], dtype=torch.int64, device=self.device)
 
         for _ in tqdm(range(epoch)):
-            policy = BrumaireModel(self.device)
-            policy.load_state_dict(self.model.state_dict())
+            self.copy_target()
 
-            for turn in range(9, -1, -1):
-                expectations = rewards[:, turn]
-                if turn < 10 - 1:
-                    next_boards = boards[:, turn + 1, :]
-                    next_hand_filters = hand_filters[:, turn + 1, :]
+            #
+            # Training
+            #
+            estimations = self.estimate_Q_value(batch_data, gamma).reshape((-1, 1))
 
-                    with torch.no_grad():
-                        evaluated: torch.Tensor = policy(next_boards) + next_hand_filters
-                        expectations += evaluated.max(dim=1)[0] * gamma
+            evaluated: torch.Tensor = self.model(batch_boards)
+            evaluated = evaluated.gather(1, batch_decisions)
 
-                expectations = expectations.reshape((-1, 1))
+            criterion = torch.nn.SmoothL1Loss()
+            loss: torch.Tensor = criterion(evaluated, estimations)
 
-                boards_tensor = boards[:, turn, :]
-                decisions_tensor = torch.tensor(np.argmax(decisions[:, turn, :], axis=1)[:, None], dtype=torch.int64, device=self.device)
+            self.optimizer.zero_grad()
+            loss.backward()
 
-                evaluated: torch.Tensor = self.model(boards_tensor)
-                evaluated = evaluated.gather(1, decisions_tensor)
+            torch.nn.utils.clip_grad_value_(self.model.parameters(), 10.)
+            self.optimizer.step()
+
+            print(f"train loss: {loss.item()}")
+
+            #
+            # Test
+            #
+            estimations = self.estimate_Q_value(test_data, gamma).reshape((-1, 1))
+
+            with torch.no_grad():
+                evaluated: torch.Tensor = self.model(test_boards)
+                evaluated = evaluated.gather(1, test_decisions)
 
                 criterion = torch.nn.SmoothL1Loss()
-                loss: torch.Tensor = criterion(evaluated, expectations)
-
-                self.optimizer.zero_grad()
-                loss.backward()
-
-                torch.nn.utils.clip_grad_value_(self.model.parameters(), 10.)
-                self.optimizer.step()
+                loss: torch.Tensor = criterion(evaluated, estimations)
+                print(f"test loss: {loss.item()}")
