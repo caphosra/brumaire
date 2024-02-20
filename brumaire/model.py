@@ -3,6 +3,8 @@ from typing import Any
 import torch
 import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
+from torch.utils.tensorboard.summary import hparams
+import os
 
 from brumaire.board import BOARD_VEC_SIZE
 from brumaire.constants import NDIntArray, NDFloatArray
@@ -18,7 +20,7 @@ class BrumaireHParams:
     clip_grad: float
 
     def write_summary(self, writer: SummaryWriter):
-        writer.add_hparams(
+        exp, ssi, sei = hparams(
             {
                 "linear1 node num": self.linear1_node_num,
                 "linear2 node num": self.linear2_node_num,
@@ -29,6 +31,10 @@ class BrumaireHParams:
             },
             {},
         )
+
+        writer.file_writer.add_summary(exp)
+        writer.file_writer.add_summary(ssi)
+        writer.file_writer.add_summary(sei)
 
 
 class BrumaireModel(torch.nn.Module):
