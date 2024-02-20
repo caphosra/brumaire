@@ -2,51 +2,92 @@ import numpy as np
 from typing import Any
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm_notebook as tqdm
+from torch.utils.tensorboard import SummaryWriter
 
 from brumaire.board import BOARD_VEC_SIZE
 from brumaire.constants import NDIntArray, NDFloatArray
 from brumaire.record import Recorder
 
-LINEAR1_NODE_NUM = 5000
-LINEAR2_NODE_NUM = 2000
-LINEAR3_NODE_NUM = 1000
+
+class BrumaireHParams:
+    linear1_node_num: int
+    linear2_node_num: int
+    linear3_node_num: int
+    ita: float
+    gamma: float
+    clip_grad: float
+
+    def write_summary(self, writer: SummaryWriter):
+        writer.add_hparams(
+            {
+                "linear1 node num": self.linear1_node_num,
+                "linear2 node num": self.linear2_node_num,
+                "linear3 node num": self.linear3_node_num,
+                "ita": self.ita,
+                "gamma": self.gamma,
+                "clip grad": self.clip_grad,
+            },
+            {},
+        )
 
 
 class BrumaireModel(torch.nn.Module):
     layer1: torch.nn.Linear
+    dropout_layer1: torch.nn.Dropout
     layer2: torch.nn.Linear
+    dropout_layer2: torch.nn.Dropout
     layer3: torch.nn.Linear
+    dropout_layer3: torch.nn.Dropout
     layer4: torch.nn.Linear
 
-    def __init__(self, device) -> None:
+    def __init__(self, h_param: BrumaireHParams, device) -> None:
         super(BrumaireModel, self).__init__()
 
-        self.layer1 = torch.nn.Linear(BOARD_VEC_SIZE, LINEAR1_NODE_NUM, device=device)
-        self.layer2 = torch.nn.Linear(LINEAR1_NODE_NUM, LINEAR2_NODE_NUM, device=device)
-        self.layer3 = torch.nn.Linear(LINEAR2_NODE_NUM, LINEAR3_NODE_NUM, device=device)
-        self.layer4 = torch.nn.Linear(LINEAR3_NODE_NUM, 54, device=device)
+        self.layer1 = torch.nn.Linear(
+            BOARD_VEC_SIZE, h_param.linear1_node_num, device=device
+        )
+        self.dropout_layer1 = torch.nn.Dropout()
+        self.layer2 = torch.nn.Linear(
+            h_param.linear1_node_num, h_param.linear2_node_num, device=device
+        )
+        self.dropout_layer2 = torch.nn.Dropout()
+        self.layer3 = torch.nn.Linear(
+            h_param.linear2_node_num, h_param.linear3_node_num, device=device
+        )
+        self.dropout_layer3 = torch.nn.Dropout()
+        self.layer4 = torch.nn.Linear(h_param.linear3_node_num, 54, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = F.relu(self.layer1(x))
-        x = F.relu(self.layer2(x))
-        x = F.relu(self.layer3(x))
+        x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
+        x = F.leaky_relu(self.dropout_layer2(self.layer2(x)))
+        x = F.leaky_relu(self.dropout_layer3(self.layer3(x)))
         return self.layer4(x)
 
 
 class BrumaireController:
     model: BrumaireModel
     target: BrumaireModel
+    h_params: BrumaireHParams
     optimizer: torch.optim.Optimizer
+    writer: SummaryWriter
+    global_step: int
     device: Any
 
-    def __init__(self, device, ita: float = 0.001) -> None:
-        self.model = BrumaireModel(device)
-        self.target = BrumaireModel(device)
+    def __init__(
+        self,
+        h_params: BrumaireHParams,
+        device,
+        writer: SummaryWriter,
+    ) -> None:
+        self.model = BrumaireModel(h_params, device)
+        self.target = BrumaireModel(h_params, device)
         self.optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=ita, amsgrad=True
+            self.model.parameters(), lr=h_params.ita, amsgrad=True
         )
+        self.writer = writer
+        self.global_step = 0
         self.device = device
+        self.h_params = h_params
 
     def make_decision(
         self, board_vec: NDFloatArray, hand_filter: NDIntArray
@@ -57,6 +98,7 @@ class BrumaireController:
         hand_filter[hand_filter == 0] = -torch.inf
         hand_filter[hand_filter == 1] = 0
 
+        self.model.eval()
         with torch.no_grad():
             evaluated: torch.Tensor = self.model(board_vec) + hand_filter
             evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
@@ -103,7 +145,6 @@ class BrumaireController:
         batch_size: int,
         test_size: int,
         epoch: int = 100,
-        gamma: float = 0.99,
     ):
         batch_data, test_data = recorder.gen_batch(batch_size, test_size)
 
@@ -129,13 +170,17 @@ class BrumaireController:
             device=self.device,
         )
 
-        for _ in tqdm(range(epoch)):
+        self.model.train()
+
+        for _ in range(epoch):
             self.copy_target()
 
             #
             # Training
             #
-            estimations = self.estimate_Q_value(batch_data, gamma).reshape((-1, 1))
+            estimations = self.estimate_Q_value(
+                batch_data, self.h_params.gamma
+            ).reshape((-1, 1))
 
             evaluated: torch.Tensor = self.model(batch_boards)
             evaluated = evaluated.gather(1, batch_decisions)
@@ -146,15 +191,19 @@ class BrumaireController:
             self.optimizer.zero_grad()
             loss.backward()
 
-            torch.nn.utils.clip_grad_value_(self.model.parameters(), 10.0)
+            torch.nn.utils.clip_grad_value_(
+                self.model.parameters(), self.h_params.clip_grad
+            )
             self.optimizer.step()
 
-            print(f"train loss: {loss.item()}")
+            self.writer.add_scalar("loss/train", loss.item(), self.global_step)
 
             #
             # Test
             #
-            estimations = self.estimate_Q_value(test_data, gamma).reshape((-1, 1))
+            estimations = self.estimate_Q_value(test_data, self.h_params.gamma).reshape(
+                (-1, 1)
+            )
 
             with torch.no_grad():
                 evaluated: torch.Tensor = self.model(test_boards)
@@ -162,4 +211,7 @@ class BrumaireController:
 
                 criterion = torch.nn.SmoothL1Loss()
                 loss: torch.Tensor = criterion(evaluated, estimations)
-                print(f"test loss: {loss.item()}")
+
+                self.writer.add_scalar("loss/test", loss.item(), self.global_step)
+
+            self.global_step += 1

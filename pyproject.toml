@@ -25,7 +25,9 @@ build-backend = "hatchling.build"
 
 [tool.rye]
 managed = true
-dev-dependencies = []
+dev-dependencies = [
+    "tensorboard>=2.14.0",
+]
 
 [tool.hatch.metadata]
 allow-direct-references = true

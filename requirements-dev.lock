@@ -8,6 +8,8 @@
 #   with-sources: false
 
 -e file:.
+absl-py==2.1.0
+    # via tensorboard
 asttokens==2.4.1
     # via stack-data
 colorama==0.4.6
@@ -26,6 +28,8 @@ filelock==3.13.1
     # via torch
 fsspec==2024.2.0
     # via torch
+grpcio==1.60.1
+    # via tensorboard
 ipykernel==6.29.0
     # via brumaire
 ipython==8.20.0
@@ -44,8 +48,11 @@ jupyter-core==5.7.1
     # via jupyter-client
 jupyterlab-widgets==3.0.10
     # via ipywidgets
+markdown==3.5.2
+    # via tensorboard
 markupsafe==2.1.5
     # via jinja2
+    # via werkzeug
 matplotlib-inline==0.1.6
     # via ipykernel
     # via ipython
@@ -57,6 +64,7 @@ networkx==3.2.1
     # via torch
 numpy==1.26.3
     # via brumaire
+    # via tensorboard
 packaging==23.2
     # via ipykernel
 parso==0.8.3
@@ -67,6 +75,8 @@ platformdirs==4.1.0
     # via jupyter-core
 prompt-toolkit==3.0.43
     # via ipython
+protobuf==4.25.3
+    # via tensorboard
 psutil==5.9.8
     # via ipykernel
 pure-eval==0.2.2
@@ -85,10 +95,14 @@ pyzmq==25.1.2
 six==1.16.0
     # via asttokens
     # via python-dateutil
+    # via tensorboard
 stack-data==0.6.3
     # via ipython
 sympy==1.12
     # via torch
+tensorboard==2.16.2
+tensorboard-data-server==0.7.2
+    # via tensorboard
 torch==2.2.0+cu121
     # via brumaire
 tornado==6.4
@@ -108,5 +122,9 @@ typing-extensions==4.9.0
     # via torch
 wcwidth==0.2.13
     # via prompt-toolkit
+werkzeug==3.0.1
+    # via tensorboard
 widgetsnbextension==4.0.10
     # via ipywidgets
+setuptools==69.1.0
+    # via tensorboard
