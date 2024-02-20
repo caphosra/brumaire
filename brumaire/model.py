@@ -69,7 +69,7 @@ class BrumaireController:
     target: BrumaireModel
     h_params: BrumaireHParams
     optimizer: torch.optim.Optimizer
-    writer: SummaryWriter
+    writer: SummaryWriter | None
     global_step: int
     device: Any
 
@@ -77,7 +77,7 @@ class BrumaireController:
         self,
         h_params: BrumaireHParams,
         device,
-        writer: SummaryWriter,
+        writer: SummaryWriter | None = None,
     ) -> None:
         self.model = BrumaireModel(h_params, device)
         self.target = BrumaireModel(h_params, device)
@@ -88,6 +88,13 @@ class BrumaireController:
         self.global_step = 0
         self.device = device
         self.h_params = h_params
+
+    def save(self, dir_path: str) -> None:
+        torch.save(self.model.state_dict(), os.path.join(dir_path, "model_data"))
+
+    def load(self, dir_path: str) -> None:
+        state = torch.load(os.path.join(dir_path, "model_data"))
+        self.model.load_state_dict(state)
 
     def make_decision(
         self, board_vec: NDFloatArray, hand_filter: NDIntArray
@@ -196,7 +203,8 @@ class BrumaireController:
             )
             self.optimizer.step()
 
-            self.writer.add_scalar("loss/train", loss.item(), self.global_step)
+            if self.writer:
+                self.writer.add_scalar("loss/train", loss.item(), self.global_step)
 
             #
             # Test
@@ -212,6 +220,7 @@ class BrumaireController:
                 criterion = torch.nn.SmoothL1Loss()
                 loss: torch.Tensor = criterion(evaluated, estimations)
 
-                self.writer.add_scalar("loss/test", loss.item(), self.global_step)
+                if self.writer:
+                    self.writer.add_scalar("loss/test", loss.item(), self.global_step)
 
             self.global_step += 1
