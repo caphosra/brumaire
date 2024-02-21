@@ -70,6 +70,7 @@ class Recorder:
         new_recorder.hand_filters = self.hand_filters[:, board_filter]
         new_recorder.decisions = self.decisions[:, board_filter]
         new_recorder.rewards = self.rewards[:, board_filter]
+        new_recorder.winners = self.winners[:, board_filter]
         return new_recorder
 
     def gen_batch(self, batch_size: int, test_size: int) -> Tuple[Recorder, Recorder]:
