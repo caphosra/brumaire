@@ -7,7 +7,20 @@ from torch.utils.tensorboard.summary import hparams
 import os
 
 from brumaire.board import BOARD_VEC_SIZE
-from brumaire.constants import NDIntArray, NDFloatArray
+from brumaire.constants import (
+    NDIntArray,
+    NDFloatArray,
+    SUIT_SPADE,
+    SUIT_HEART,
+    ADJ_ALMIGHTY,
+    ADJ_MAIN_JACK,
+    ADJ_SUB_JACK,
+    ADJ_PARTNER,
+    ADJ_TRUMP_TWO,
+    ADJ_FLIPPED_TWO,
+    ADJ_TRUMP_MAXIMUM,
+    ADJ_RANDOM,
+)
 from brumaire.record import Recorder
 
 
@@ -35,6 +48,28 @@ class BrumaireHParams:
         writer.file_writer.add_summary(exp)
         writer.file_writer.add_summary(ssi)
         writer.file_writer.add_summary(sei)
+
+
+class AvantBrumaireModel(torch.nn.Module):
+    layer1: torch.nn.Linear
+    dropout_layer1: torch.nn.Linear
+    layer2: torch.nn.Linear
+    dropout_layer2: torch.nn.Linear
+    layer3: torch.nn.Linear
+
+    def __init__(self, device) -> None:
+        super(AvantBrumaireModel, self).__init__()
+
+        self.layer1 = torch.nn.Linear(BOARD_VEC_SIZE, 1000, device=device)
+        self.dropout_layer1 = torch.nn.Dropout()
+        self.layer2 = torch.nn.Linear(1000, 1000, device=device)
+        self.dropout_layer2 = torch.nn.Dropout()
+        self.layer3 = torch.nn.Linear(1000, 4 * 8 * 2, device=device)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
+        x = F.leaky_relu(self.dropout_layer2(self.layer2(x)))
+        return self.layer3(x)
 
 
 class BrumaireModel(torch.nn.Module):
@@ -71,10 +106,17 @@ class BrumaireModel(torch.nn.Module):
 
 
 class BrumaireController:
+    decl_model: AvantBrumaireModel
+    decl_target: AvantBrumaireModel
+
     model: BrumaireModel
     target: BrumaireModel
+
     h_params: BrumaireHParams
+
+    decl_optimizer: torch.optim.Optimizer
     optimizer: torch.optim.Optimizer
+
     writer: SummaryWriter | None
     global_step: int
     device: Any
@@ -85,11 +127,19 @@ class BrumaireController:
         device,
         writer: SummaryWriter | None = None,
     ) -> None:
+        self.decl_model = AvantBrumaireModel(device)
+        self.decl_target = AvantBrumaireModel(device)
+
         self.model = BrumaireModel(h_params, device)
         self.target = BrumaireModel(h_params, device)
+
+        self.decl_optimizer = torch.optim.AdamW(
+            self.decl_model.parameters(), lr=h_params.ita, amsgrad=True
+        )
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=h_params.ita, amsgrad=True
         )
+
         self.writer = writer
         self.global_step = 0
         self.device = device
@@ -101,6 +151,105 @@ class BrumaireController:
     def load(self, dir_path: str) -> None:
         state = torch.load(os.path.join(dir_path, "model_data"))
         self.model.load_state_dict(state)
+
+    def convert_to_card_oriented(
+        self, decl: NDIntArray, strongest: NDIntArray
+    ) -> NDIntArray:
+        """
+        Converts the decl from `(board_num, 3)` to `(board_num, 4)`.
+        """
+
+        board_num = decl.shape[0]
+        converted = np.zeros((board_num, 4))
+        converted[:, 0] = decl[:, 0]
+        converted[:, 1] = decl[:, 1]
+        adj_card = decl[:, 2]
+
+        converted[:, 2] = np.random.randint(4, size=(board_num,))
+        converted[:, 3] = np.random.randint(13, size=(board_num,))
+
+        converted[adj_card == ADJ_ALMIGHTY, 2] = SUIT_SPADE
+        converted[adj_card == ADJ_ALMIGHTY, 3] = 14 - 2
+
+        converted[adj_card == ADJ_MAIN_JACK, 2] = converted[
+            adj_card == ADJ_MAIN_JACK, 0
+        ]
+        converted[adj_card == ADJ_MAIN_JACK, 3] = 11 - 2
+
+        converted[adj_card == ADJ_SUB_JACK, 2] = (
+            3 - converted[adj_card == ADJ_SUB_JACK, 0]
+        )
+        converted[adj_card == ADJ_SUB_JACK, 3] = 11 - 2
+
+        converted[adj_card == ADJ_PARTNER, 2] = SUIT_HEART
+        converted[adj_card == ADJ_PARTNER, 3] = 12 - 2
+
+        converted[adj_card == ADJ_TRUMP_TWO, 2] = converted[
+            adj_card == ADJ_TRUMP_TWO, 0
+        ]
+        converted[adj_card == ADJ_TRUMP_TWO, 3] = 2 - 2
+
+        converted[adj_card == ADJ_FLIPPED_TWO, 2] = (
+            3 - converted[adj_card == ADJ_FLIPPED_TWO, 0]
+        )
+        converted[adj_card == ADJ_FLIPPED_TWO, 3] = 2 - 2
+
+        for idx in range(board_num):
+            if adj_card[idx] == ADJ_TRUMP_MAXIMUM:
+                strongest_card = strongest[idx, decl[idx, 0]]
+                converted[idx, 2] = strongest_card // 13
+                converted[idx, 3] = strongest_card % 13
+
+        return converted
+
+    def convert_to_adj_type_oriented(
+        self, decl: NDIntArray, strongest: NDIntArray
+    ) -> NDIntArray:
+        """
+        Converts the decl from `(board_num, 4)` to `(board_num, 3)`.
+        """
+
+        board_num = decl.shape[0]
+        converted = np.zeros((board_num, 3))
+        converted[:, 0] = decl[:, 0]
+        converted[:, 1] = decl[:, 1]
+
+        converted[:, 2] = ADJ_RANDOM
+
+        for idx in range(board_num):
+            if decl[idx, 2] == strongest[idx, decl[idx, 0]]:
+                # It can be ADJ_RANDOM.
+                # However, we will ignore this because the possibility of "false-positive" is too low.
+                converted[:, 2] = ADJ_TRUMP_MAXIMUM
+
+        converted[
+            (decl[:, 2] == (3 - decl[:, 0])) & (decl[:, 3] == 2 - 2), 2
+        ] = ADJ_FLIPPED_TWO
+        converted[(decl[:, 2] == decl[:, 0]) & (decl[:, 3] == 2 - 2), 2] = ADJ_TRUMP_TWO
+        converted[(decl[:, 2] == SUIT_HEART) & (decl[:, 3] == 12 - 2), 2] = ADJ_PARTNER
+        converted[
+            (decl[:, 2] == (3 - decl[:, 0])) & (decl[:, 3] == 11 - 2), 2
+        ] = ADJ_SUB_JACK
+        converted[
+            (decl[:, 2] == decl[:, 0]) & (decl[:, 3] == 11 - 2), 2
+        ] = ADJ_MAIN_JACK
+        converted[(decl[:, 2] == SUIT_SPADE) & (decl[:, 3] == 14 - 2), 2] = ADJ_ALMIGHTY
+
+        return converted
+
+    def decl_goal(self, board_vec: NDFloatArray, strongest: NDIntArray) -> NDIntArray:
+        board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
+
+        self.decl_model.eval()
+        with torch.no_grad():
+            evaluated: torch.Tensor = self.decl_model(board_vec)
+            evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
+
+        decl = np.zeros((board_vec.shape[0], 3), dtype=int)
+        decl[:, 0] = evaluated // 32
+        decl[:, 1] = (evaluated % 32) // 8
+        decl[:, 2] = (evaluated % 32) % 8
+        return self.convert_to_card_oriented(decl, strongest)
 
     def make_decision(
         self, board_vec: NDFloatArray, hand_filter: NDIntArray

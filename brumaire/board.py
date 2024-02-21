@@ -251,6 +251,26 @@ class BoardData:
 
         return np.argmax(scores, axis=1)
 
+    def get_strongest_for_each_suits(self) -> NDIntArray:
+        """
+        Get a strongest card in the players hand.
+        If there are no cards that meets the conditions, it will return a random card.
+
+        This method works properly only after calling `change_perspective`.
+        """
+
+        strongest = np.random.randint(52, size=(self.board_num, 4))
+        for idx in range(self.board_num):
+            for suit in range(4):
+                suits_card = self.cards[idx, suit * 13 : (suit + 1) * 13]
+                players_cards = np.argwhere(
+                    (suits_card[:, 0] == CARD_IN_HAND) & (suits_card[:, 1] == 0)
+                )
+                if players_cards.size != 0:
+                    strongest_card = players_cards[-1][0]
+                    strongest[idx, suit] = suit * 13 + strongest_card
+        return strongest
+
 
 def generate_board(board_num: int) -> BoardData:
     cards = np.zeros((board_num, 54, 4))

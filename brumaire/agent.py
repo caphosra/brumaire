@@ -69,7 +69,18 @@ class BrumaireAgent(RandomAgent):
         self.epsilon = epsilon
 
     def declare_goal(self, board: BoardData) -> ndarray:
-        return super().declare_goal(board)
+        samples = np.random.rand(board.board_num)
+        strongest = board.get_strongest_for_each_suits()
+        board_vec = board.to_vector()
+
+        decl = np.zeros((board.board_num, 4))
+        decl[samples > self.epsilon] = self.controller.decl_goal(
+            board_vec[samples > self.epsilon], strongest[samples > self.epsilon]
+        )
+        decl[samples <= self.epsilon] = super().declare_goal(
+            board.slice_boards(samples <= self.epsilon)
+        )
+        return decl
 
     def discard(self, board: BoardData) -> np.ndarray:
         return super().discard(board)
