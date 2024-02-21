@@ -122,6 +122,7 @@ class Game:
             )
 
             self.recorder.first_boards[player] = board.to_vector()
+            self.recorder.strongest[player] = board.get_strongest_for_each_suits()
             self.recorder.declarations[player] = declarations[:, player, :]
 
         # Select a napoleon randomly.

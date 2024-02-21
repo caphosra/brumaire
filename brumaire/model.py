@@ -107,7 +107,6 @@ class BrumaireModel(torch.nn.Module):
 
 class BrumaireController:
     decl_model: AvantBrumaireModel
-    decl_target: AvantBrumaireModel
 
     model: BrumaireModel
     target: BrumaireModel
@@ -118,6 +117,7 @@ class BrumaireController:
     optimizer: torch.optim.Optimizer
 
     writer: SummaryWriter | None
+    decl_global_step: int
     global_step: int
     device: Any
 
@@ -128,7 +128,6 @@ class BrumaireController:
         writer: SummaryWriter | None = None,
     ) -> None:
         self.decl_model = AvantBrumaireModel(device)
-        self.decl_target = AvantBrumaireModel(device)
 
         self.model = BrumaireModel(h_params, device)
         self.target = BrumaireModel(h_params, device)
@@ -141,6 +140,7 @@ class BrumaireController:
         )
 
         self.writer = writer
+        self.decl_global_step = 0
         self.global_step = 0
         self.device = device
         self.h_params = h_params
@@ -210,7 +210,7 @@ class BrumaireController:
         """
 
         board_num = decl.shape[0]
-        converted = np.zeros((board_num, 3))
+        converted = np.zeros((board_num, 3), dtype=int)
         converted[:, 0] = decl[:, 0]
         converted[:, 1] = decl[:, 1]
 
@@ -246,9 +246,9 @@ class BrumaireController:
             evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
 
         decl = np.zeros((board_vec.shape[0], 3), dtype=int)
-        decl[:, 0] = evaluated // 32
-        decl[:, 1] = (evaluated % 32) // 8
-        decl[:, 2] = (evaluated % 32) % 8
+        decl[:, 0] = evaluated // 16
+        decl[:, 1] = (evaluated % 16) // 8 + 12
+        decl[:, 2] = (evaluated % 16) % 8
         return self.convert_to_card_oriented(decl, strongest)
 
     def make_decision(
@@ -272,13 +272,13 @@ class BrumaireController:
         self.target.eval()
 
     def estimate_Q_value(self, recorder: Recorder, gamma: float) -> torch.Tensor:
-        boards = recorder.boards.reshape((-1, 10, BOARD_VEC_SIZE))
+        boards = recorder.boards[0]
         boards = torch.tensor(boards, dtype=torch.float32, device=self.device)
 
-        rewards = recorder.rewards.reshape((-1, 10))
+        rewards = recorder.rewards[0]
         rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
 
-        hand_filters = recorder.hand_filters.reshape((-1, 10, 54))
+        hand_filters = recorder.hand_filters[0]
         hand_filters = torch.tensor(
             hand_filters, dtype=torch.float32, device=self.device
         )
@@ -301,6 +301,103 @@ class BrumaireController:
 
         return estimations
 
+    def train_decl(
+        self,
+        recorder: Recorder,
+        batch_size: int,
+        test_size: int,
+        epoch: int = 100,
+    ):
+        batch_data, test_data = recorder.gen_batch(batch_size, test_size)
+
+        batch_first_boards = batch_data.first_boards[0]
+        batch_first_boards = torch.tensor(
+            batch_first_boards, dtype=torch.float32, device=self.device
+        )
+
+        test_first_boards = test_data.first_boards[0]
+        test_first_boards = torch.tensor(
+            test_first_boards, dtype=torch.float32, device=self.device
+        )
+
+        batch_decl = self.convert_to_adj_type_oriented(
+            batch_data.declarations[0], batch_data.strongest[0]
+        )
+        batch_arg_decl = (
+            batch_decl[:, 0] * 16
+            + np.minimum(batch_decl[:, 1] - 12, 1) * 8
+            + batch_decl[:, 2]
+        )
+        batch_decl = torch.tensor(
+            batch_arg_decl, dtype=torch.int64, device=self.device
+        ).reshape((-1, 1))
+
+        test_decl = self.convert_to_adj_type_oriented(
+            test_data.declarations[0], test_data.strongest[0]
+        )
+        test_arg_decl = (
+            test_decl[:, 0] * 16
+            + np.minimum(test_decl[:, 1] - 12, 1) * 8
+            + test_decl[:, 2]
+        )
+        test_decl = torch.tensor(
+            test_arg_decl, dtype=torch.int64, device=self.device
+        ).reshape((-1, 1))
+
+        batch_rewards = np.sum(batch_data.rewards[0], axis=1)
+        batch_rewards = torch.tensor(
+            batch_rewards, dtype=torch.float32, device=self.device
+        ).reshape((-1, 1))
+
+        test_rewards = np.sum(test_data.rewards[0], axis=1)
+        test_rewards = torch.tensor(
+            test_rewards, dtype=torch.float32, device=self.device
+        ).reshape((-1, 1))
+
+        self.decl_model.train()
+
+        for _ in range(epoch):
+            self.copy_target()
+
+            #
+            # Training
+            #
+            evaluated: torch.Tensor = self.decl_model(batch_first_boards)
+            evaluated = evaluated.gather(1, batch_decl)
+
+            criterion = torch.nn.SmoothL1Loss()
+            loss: torch.Tensor = criterion(evaluated, batch_rewards)
+
+            self.decl_optimizer.zero_grad()
+            loss.backward()
+
+            torch.nn.utils.clip_grad_value_(
+                self.decl_model.parameters(), self.h_params.clip_grad
+            )
+            self.optimizer.step()
+
+            if self.writer:
+                self.writer.add_scalar(
+                    "loss/decl-train", loss.item(), self.decl_global_step
+                )
+
+            #
+            # Test
+            #
+            with torch.no_grad():
+                evaluated: torch.Tensor = self.decl_model(test_first_boards)
+                evaluated = evaluated.gather(1, test_decl)
+
+                criterion = torch.nn.SmoothL1Loss()
+                loss: torch.Tensor = criterion(evaluated, test_rewards)
+
+                if self.writer:
+                    self.writer.add_scalar(
+                        "loss/decl-test", loss.item(), self.decl_global_step
+                    )
+
+            self.decl_global_step += 1
+
     def train(
         self,
         recorder: Recorder,
@@ -310,22 +407,22 @@ class BrumaireController:
     ):
         batch_data, test_data = recorder.gen_batch(batch_size, test_size)
 
-        batch_boards = batch_data.boards.reshape((-1, BOARD_VEC_SIZE))
+        batch_boards = batch_data.boards[0].reshape((-1, BOARD_VEC_SIZE))
         batch_boards = torch.tensor(
             batch_boards, dtype=torch.float32, device=self.device
         )
 
-        test_boards = test_data.boards.reshape((-1, BOARD_VEC_SIZE))
+        test_boards = test_data.boards[0].reshape((-1, BOARD_VEC_SIZE))
         test_boards = torch.tensor(test_boards, dtype=torch.float32, device=self.device)
 
-        batch_decisions = batch_data.decisions.reshape((-1, 54))
+        batch_decisions = batch_data.decisions[0].reshape((-1, 54))
         batch_decisions = torch.tensor(
             np.argmax(batch_decisions, axis=1)[:, None],
             dtype=torch.int64,
             device=self.device,
         )
 
-        test_decisions = test_data.decisions.reshape((-1, 54))
+        test_decisions = test_data.decisions[0].reshape((-1, 54))
         test_decisions = torch.tensor(
             np.argmax(test_decisions, axis=1)[:, None],
             dtype=torch.int64,

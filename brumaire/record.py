@@ -14,6 +14,11 @@ class Recorder:
     shape: `(5, board_num, BOARD_VEC_SIZE)`
     """
 
+    strongest: NDIntArray
+    """
+    shape: `(5, board_num, 4)`
+    """
+
     declarations: NDIntArray
     """
     shape: `(5, board_num, 4)`
@@ -50,21 +55,23 @@ class Recorder:
         self._board_num = board_num
 
         self.first_boards = np.zeros((5, board_num, BOARD_VEC_SIZE))
-        self.declarations = np.zeros((5, board_num, 4))
+        self.strongest = np.zeros((5, board_num, 4), dtype=int)
+        self.declarations = np.zeros((5, board_num, 4), dtype=int)
 
         self.boards = np.zeros((5, board_num, TURN, BOARD_VEC_SIZE))
-        self.hand_filters = np.zeros((5, board_num, TURN, 54))
-        self.decisions = np.zeros((5, board_num, TURN, 54))
+        self.hand_filters = np.zeros((5, board_num, TURN, 54), dtype=int)
+        self.decisions = np.zeros((5, board_num, TURN, 54), dtype=int)
         self.rewards = np.zeros((5, board_num, TURN))
 
         self.winners = np.zeros((5, board_num))
 
     def get_data_size(self) -> int:
-        return 5 * self._board_num
+        return self._board_num
 
     def filter_by_board(self, board_filter: NDIntArray) -> Recorder:
         new_recorder = Recorder(board_filter.shape[0])
         new_recorder.first_boards = self.first_boards[:, board_filter]
+        new_recorder.strongest = self.strongest[:, board_filter]
         new_recorder.declarations = self.declarations[:, board_filter]
         new_recorder.boards = self.boards[:, board_filter]
         new_recorder.hand_filters = self.hand_filters[:, board_filter]

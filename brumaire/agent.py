@@ -77,8 +77,10 @@ class BrumaireAgent(RandomAgent):
         decl[samples > self.epsilon] = self.controller.decl_goal(
             board_vec[samples > self.epsilon], strongest[samples > self.epsilon]
         )
-        decl[samples <= self.epsilon] = super().declare_goal(
-            board.slice_boards(samples <= self.epsilon)
+        random_num = np.count_nonzero(samples <= self.epsilon)
+        decl[samples <= self.epsilon] = self.controller.convert_to_card_oriented(
+            np.random.randint([0, 12, 0], [4, 14, 8], size=(random_num, 3)),
+            strongest[samples <= self.epsilon],
         )
         return decl
 
