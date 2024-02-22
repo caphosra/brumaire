@@ -162,9 +162,13 @@ class BrumaireController:
         self.model.load_state_dict(agent.model.state_dict())
 
     def save(self, dir_path: str) -> None:
+        torch.save(self.decl_model.state_dict(), os.path.join(dir_path, "decl_model_data"))
         torch.save(self.model.state_dict(), os.path.join(dir_path, "model_data"))
 
     def load(self, dir_path: str) -> None:
+        state = torch.load(os.path.join(dir_path, "decl_model_data"))
+        self.decl_model.load_state_dict(state)
+
         state = torch.load(os.path.join(dir_path, "model_data"))
         self.model.load_state_dict(state)
 
