@@ -1,3 +1,4 @@
+from __future__ import annotations
 import numpy as np
 from typing import Any
 import torch
@@ -25,19 +26,30 @@ from brumaire.record import Recorder
 
 
 class BrumaireHParams:
-    linear1_node_num: int
-    linear2_node_num: int
-    linear3_node_num: int
-    ita: float
-    gamma: float
-    clip_grad: float
+    decl_l1_node: int
+    decl_l2_node: int
+
+    decl_ita: float = 0.0
+    decl_clip_grad: float = 0.0
+
+    l1_node: int
+    l2_node: int
+    l3_node: int
+
+    ita: float = 0.0
+    gamma: float = 0.0
+    clip_grad: float = 0.0
 
     def write_summary(self, writer: SummaryWriter):
         exp, ssi, sei = hparams(
             {
-                "linear1 node num": self.linear1_node_num,
-                "linear2 node num": self.linear2_node_num,
-                "linear3 node num": self.linear3_node_num,
+                "decl/l1 node": self.decl_l1_node,
+                "decl/l2 node": self.decl_l2_node,
+                "decl/ita": self.decl_ita,
+                "decl/clip grad": self.decl_clip_grad,
+                "l1 node": self.l1_node,
+                "l2 node": self.l2_node,
+                "l3 node": self.l3_node,
                 "ita": self.ita,
                 "gamma": self.gamma,
                 "clip grad": self.clip_grad,
@@ -57,14 +69,14 @@ class AvantBrumaireModel(torch.nn.Module):
     dropout_layer2: torch.nn.Linear
     layer3: torch.nn.Linear
 
-    def __init__(self, device) -> None:
+    def __init__(self, h_param: BrumaireHParams, device) -> None:
         super(AvantBrumaireModel, self).__init__()
 
-        self.layer1 = torch.nn.Linear(BOARD_VEC_SIZE, 1000, device=device)
+        self.layer1 = torch.nn.Linear(BOARD_VEC_SIZE, h_param.decl_l1_node, device=device)
         self.dropout_layer1 = torch.nn.Dropout()
-        self.layer2 = torch.nn.Linear(1000, 1000, device=device)
+        self.layer2 = torch.nn.Linear(h_param.decl_l1_node, h_param.decl_l2_node, device=device)
         self.dropout_layer2 = torch.nn.Dropout()
-        self.layer3 = torch.nn.Linear(1000, 4 * 8 * 2, device=device)
+        self.layer3 = torch.nn.Linear(h_param.decl_l2_node, 4 * 8 * 2, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
@@ -85,18 +97,18 @@ class BrumaireModel(torch.nn.Module):
         super(BrumaireModel, self).__init__()
 
         self.layer1 = torch.nn.Linear(
-            BOARD_VEC_SIZE, h_param.linear1_node_num, device=device
+            BOARD_VEC_SIZE, h_param.l1_node, device=device
         )
         self.dropout_layer1 = torch.nn.Dropout()
         self.layer2 = torch.nn.Linear(
-            h_param.linear1_node_num, h_param.linear2_node_num, device=device
+            h_param.l1_node, h_param.l2_node, device=device
         )
         self.dropout_layer2 = torch.nn.Dropout()
         self.layer3 = torch.nn.Linear(
-            h_param.linear2_node_num, h_param.linear3_node_num, device=device
+            h_param.l2_node, h_param.l3_node, device=device
         )
         self.dropout_layer3 = torch.nn.Dropout()
-        self.layer4 = torch.nn.Linear(h_param.linear3_node_num, 54, device=device)
+        self.layer4 = torch.nn.Linear(h_param.l3_node, 54, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
@@ -127,13 +139,13 @@ class BrumaireController:
         device,
         writer: SummaryWriter | None = None,
     ) -> None:
-        self.decl_model = AvantBrumaireModel(device)
+        self.decl_model = AvantBrumaireModel(h_params, device)
 
         self.model = BrumaireModel(h_params, device)
         self.target = BrumaireModel(h_params, device)
 
         self.decl_optimizer = torch.optim.AdamW(
-            self.decl_model.parameters(), lr=h_params.ita, amsgrad=True
+            self.decl_model.parameters(), lr=h_params.decl_ita, amsgrad=True
         )
         self.optimizer = torch.optim.AdamW(
             self.model.parameters(), lr=h_params.ita, amsgrad=True
@@ -144,6 +156,10 @@ class BrumaireController:
         self.global_step = 0
         self.device = device
         self.h_params = h_params
+
+    def copy_from_other(self, agent: BrumaireController):
+        self.decl_model.load_state_dict(agent.decl_model.state_dict())
+        self.model.load_state_dict(agent.model.state_dict())
 
     def save(self, dir_path: str) -> None:
         torch.save(self.model.state_dict(), os.path.join(dir_path, "model_data"))
@@ -372,7 +388,7 @@ class BrumaireController:
             loss.backward()
 
             torch.nn.utils.clip_grad_value_(
-                self.decl_model.parameters(), self.h_params.clip_grad
+                self.decl_model.parameters(), self.h_params.decl_clip_grad
             )
             self.optimizer.step()
 
