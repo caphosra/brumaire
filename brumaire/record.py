@@ -2,7 +2,7 @@ from __future__ import annotations
 import numpy as np
 from typing import Tuple
 
-from brumaire.board import BOARD_VEC_SIZE
+from brumaire.board import BOARD_VEC_SIZE, board_from_vector
 from brumaire.constants import NDFloatArray, NDIntArray
 
 TURN = 10
@@ -90,3 +90,25 @@ class Recorder:
         test_choice = choice[batch_size:]
 
         return self.filter_by_board(batch_choice), self.filter_by_board(test_choice)
+
+    def avg_reward(self, player: int) -> float:
+        return np.sum(self.rewards[player]) / self._board_num
+
+    def win_rate(self, player: int) -> float:
+        return np.sum(self.winners[player]) / self._board_num
+
+    def total_win_rate(self) -> float:
+        return np.sum(self.winners) / self._board_num / 5
+
+    def fold_rate(self, player: int) -> float:
+        return np.sum(self.declarations[player, :, 1] == 12) / self._board_num
+
+    def win_as_role_rate(self, player: int, role: int, default: float = 0.5) -> float:
+        board = board_from_vector(self.boards[player, :, 0])
+        board_count = np.sum(board.roles[:, 0] == role)
+        win_count = np.sum(self.winners[player, board.roles[:, 0] == role])
+
+        if board_count == 0:
+            return default
+        else:
+            return win_count / board_count
