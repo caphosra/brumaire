@@ -306,26 +306,26 @@ def board_from_vector(vec: NDFloatArray) -> BoardData:
 
     board_num = vec.shape[0]
 
-    cards = vec[:, 0 : 54 * 4].reshape((board_num, 54, 4))
+    cards = vec[:, 0 : 54 * 4].reshape((board_num, 54, 4)).copy()
     cards[:, :, 0] *= 2
     cards[:, :, 1] *= 4
     cards[:, :, 2] *= 50
     cards = cards.astype(int)
 
-    taken = vec[:, 54 * 4 : 54 * 4 + 5]
+    taken = vec[:, 54 * 4 : 54 * 4 + 5].copy()
     taken *= 20
     taken = taken.astype(int)
 
-    roles = vec[:, 54 * 4 + 5 : 54 * 4 + 5 + 5]
+    roles = vec[:, 54 * 4 + 5 : 54 * 4 + 5 + 5].copy()
     roles *= 3
     roles = roles.astype(int)
 
-    decl = vec[:, 54 * 4 + 5 + 5 : 54 * 4 + 5 + 5 + 2]
+    decl = vec[:, 54 * 4 + 5 + 5 : 54 * 4 + 5 + 5 + 2].copy()
     decl[:, 0] *= 3
     decl[:, 1] = decl[:, 1] * 8 + 12
     decl = decl.astype(int)
 
-    lead = vec[:, 54 * 4 + 5 + 5 + 2 : 54 * 4 + 5 + 5 + 2 + 2]
+    lead = vec[:, 54 * 4 + 5 + 5 + 2 : 54 * 4 + 5 + 5 + 2 + 2].copy()
     lead[:, 0] *= 4.0
     lead[:, 1] *= 4.0
     lead = lead.astype(int)
