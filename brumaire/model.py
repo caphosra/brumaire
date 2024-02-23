@@ -28,6 +28,7 @@ from brumaire.record import Recorder
 class BrumaireHParams:
     decl_l1_node: int
     decl_l2_node: int
+    decl_l3_node: int
 
     decl_ita: float = 0.0
     decl_clip_grad: float = 0.0
@@ -45,6 +46,7 @@ class BrumaireHParams:
             {
                 "decl/l1 node": self.decl_l1_node,
                 "decl/l2 node": self.decl_l2_node,
+                "decl/l3 node": self.decl_l3_node,
                 "decl/ita": self.decl_ita,
                 "decl/clip grad": self.decl_clip_grad,
                 "l1 node": self.l1_node,
@@ -64,10 +66,12 @@ class BrumaireHParams:
 
 class AvantBrumaireModel(torch.nn.Module):
     layer1: torch.nn.Linear
-    dropout_layer1: torch.nn.Linear
+    dropout_layer1: torch.nn.Dropout
     layer2: torch.nn.Linear
-    dropout_layer2: torch.nn.Linear
+    dropout_layer2: torch.nn.Dropout
     layer3: torch.nn.Linear
+    dropout_layer3: torch.nn.Dropout
+    layer4: torch.nn.Linear
 
     def __init__(self, h_param: BrumaireHParams, device) -> None:
         super(AvantBrumaireModel, self).__init__()
@@ -76,12 +80,15 @@ class AvantBrumaireModel(torch.nn.Module):
         self.dropout_layer1 = torch.nn.Dropout()
         self.layer2 = torch.nn.Linear(h_param.decl_l1_node, h_param.decl_l2_node, device=device)
         self.dropout_layer2 = torch.nn.Dropout()
-        self.layer3 = torch.nn.Linear(h_param.decl_l2_node, 4 * 8 * 2, device=device)
+        self.layer3 = torch.nn.Linear(h_param.decl_l2_node, h_param.decl_l3_node, device=device)
+        self.dropout_layer3 = torch.nn.Dropout()
+        self.layer4 = torch.nn.Linear(h_param.decl_l3_node, 4 * 8 * 2, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
         x = F.leaky_relu(self.dropout_layer2(self.layer2(x)))
-        return self.layer3(x)
+        x = F.leaky_relu(self.dropout_layer3(self.layer3(x)))
+        return self.layer4(x)
 
 
 class BrumaireModel(torch.nn.Module):
