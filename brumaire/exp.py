@@ -6,7 +6,7 @@ import torch
 from brumaire.board import BOARD_VEC_SIZE
 from brumaire.constants import NDFloatArray, NDIntArray
 from brumaire.record import Recorder
-from brumaire.model import BrumaireModel
+from brumaire.model import BrumaireTrickModel
 from brumaire.utils import convert_to_strategy_oriented
 
 
@@ -59,7 +59,7 @@ class ExperienceDB:
         self,
         player: int,
         recorder: Recorder,
-        trick_model: BrumaireModel,
+        trick_model: BrumaireTrickModel,
         gamma: float,
         device: Any,
     ) -> None:
@@ -94,7 +94,7 @@ class ExperienceDB:
         self,
         player: int,
         recorder: Recorder,
-        trick_model: BrumaireModel,
+        trick_model: BrumaireTrickModel,
         gamma: float,
         device: Any,
     ) -> NDFloatArray:

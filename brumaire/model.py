@@ -15,28 +15,28 @@ class BrumaireHParams:
     decl_ita: float = 0.0
     decl_clip_grad: float = 0.0
 
-    l1_node: int
-    l2_node: int
-    l3_node: int
+    trick_l1_node: int
+    trick_l2_node: int
+    trick_l3_node: int
 
-    ita: float = 0.0
     gamma: float = 0.0
-    clip_grad: float = 0.0
+    trick_ita: float = 0.0
+    trick_clip_grad: float = 0.0
 
     def write_summary(self, writer: SummaryWriter):
         exp, ssi, sei = hparams(
             {
-                "decl/l1 node": self.decl_l1_node,
-                "decl/l2 node": self.decl_l2_node,
-                "decl/l3 node": self.decl_l3_node,
-                "decl/ita": self.decl_ita,
-                "decl/clip grad": self.decl_clip_grad,
-                "l1 node": self.l1_node,
-                "l2 node": self.l2_node,
-                "l3 node": self.l3_node,
-                "ita": self.ita,
+                "decl l1 node": self.decl_l1_node,
+                "decl l2 node": self.decl_l2_node,
+                "decl l3 node": self.decl_l3_node,
+                "decl ita": self.decl_ita,
+                "decl clip grad": self.decl_clip_grad,
+                "trick l1 node": self.trick_l1_node,
+                "trick l2 node": self.trick_l2_node,
+                "trick l3 node": self.trick_l3_node,
+                "trick ita": self.trick_ita,
+                "trick clip grad": self.trick_clip_grad,
                 "gamma": self.gamma,
-                "clip grad": self.clip_grad,
             },
             {},
         )
@@ -46,7 +46,7 @@ class BrumaireHParams:
         writer.file_writer.add_summary(sei)
 
 
-class AvantBrumaireModel(torch.nn.Module):
+class BrumaireDeclModel(torch.nn.Module):
     layer1: torch.nn.Linear
     dropout_layer1: torch.nn.Dropout
     layer2: torch.nn.Linear
@@ -56,7 +56,7 @@ class AvantBrumaireModel(torch.nn.Module):
     layer4: torch.nn.Linear
 
     def __init__(self, h_param: BrumaireHParams, device) -> None:
-        super(AvantBrumaireModel, self).__init__()
+        super(BrumaireDeclModel, self).__init__()
 
         self.layer1 = torch.nn.Linear(
             BOARD_VEC_SIZE, h_param.decl_l1_node, device=device
@@ -79,7 +79,7 @@ class AvantBrumaireModel(torch.nn.Module):
         return self.layer4(x)
 
 
-class BrumaireModel(torch.nn.Module):
+class BrumaireTrickModel(torch.nn.Module):
     layer1: torch.nn.Linear
     dropout_layer1: torch.nn.Dropout
     layer2: torch.nn.Linear
@@ -89,15 +89,21 @@ class BrumaireModel(torch.nn.Module):
     layer4: torch.nn.Linear
 
     def __init__(self, h_param: BrumaireHParams, device) -> None:
-        super(BrumaireModel, self).__init__()
+        super(BrumaireTrickModel, self).__init__()
 
-        self.layer1 = torch.nn.Linear(BOARD_VEC_SIZE, h_param.l1_node, device=device)
+        self.layer1 = torch.nn.Linear(
+            BOARD_VEC_SIZE, h_param.trick_l1_node, device=device
+        )
         self.dropout_layer1 = torch.nn.Dropout()
-        self.layer2 = torch.nn.Linear(h_param.l1_node, h_param.l2_node, device=device)
+        self.layer2 = torch.nn.Linear(
+            h_param.trick_l1_node, h_param.trick_l2_node, device=device
+        )
         self.dropout_layer2 = torch.nn.Dropout()
-        self.layer3 = torch.nn.Linear(h_param.l2_node, h_param.l3_node, device=device)
+        self.layer3 = torch.nn.Linear(
+            h_param.trick_l2_node, h_param.trick_l3_node, device=device
+        )
         self.dropout_layer3 = torch.nn.Dropout()
-        self.layer4 = torch.nn.Linear(h_param.l3_node, 54, device=device)
+        self.layer4 = torch.nn.Linear(h_param.trick_l3_node, 54, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))

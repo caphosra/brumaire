@@ -5,39 +5,27 @@ import torch
 from torch.utils.tensorboard import SummaryWriter
 import os
 
-from brumaire.board import BOARD_VEC_SIZE
 from brumaire.constants import (
     NDIntArray,
     NDFloatArray,
-    SUIT_SPADE,
-    SUIT_HEART,
-    ADJ_ALMIGHTY,
-    ADJ_MAIN_JACK,
-    ADJ_SUB_JACK,
-    ADJ_PARTNER,
-    ADJ_TRUMP_TWO,
-    ADJ_FLIPPED_TWO,
-    ADJ_TRUMP_MAXIMUM,
-    ADJ_RANDOM,
 )
-from brumaire.model import AvantBrumaireModel, BrumaireModel, BrumaireHParams
-from brumaire.record import Recorder
+from brumaire.model import BrumaireDeclModel, BrumaireTrickModel, BrumaireHParams
+from brumaire.utils import convert_to_card_oriented
+from brumaire.exp import ExperienceDB
 
 
 class BrumaireController:
-    decl_model: AvantBrumaireModel
-
-    model: BrumaireModel
-    target: BrumaireModel
+    decl_model: BrumaireDeclModel
+    trick_model: BrumaireTrickModel
 
     h_params: BrumaireHParams
 
     decl_optimizer: torch.optim.Optimizer
-    optimizer: torch.optim.Optimizer
+    trick_optimizer: torch.optim.Optimizer
 
     writer: SummaryWriter | None
     decl_global_step: int
-    global_step: int
+    trick_global_step: int
     device: Any
 
     def __init__(
@@ -46,125 +34,41 @@ class BrumaireController:
         device,
         writer: SummaryWriter | None = None,
     ) -> None:
-        self.decl_model = AvantBrumaireModel(h_params, device)
+        self.decl_model = BrumaireDeclModel(h_params, device)
 
-        self.model = BrumaireModel(h_params, device)
-        self.target = BrumaireModel(h_params, device)
+        self.trick_model = BrumaireTrickModel(h_params, device)
 
         self.decl_optimizer = torch.optim.AdamW(
             self.decl_model.parameters(), lr=h_params.decl_ita, amsgrad=True
         )
-        self.optimizer = torch.optim.AdamW(
-            self.model.parameters(), lr=h_params.ita, amsgrad=True
+        self.trick_optimizer = torch.optim.AdamW(
+            self.trick_model.parameters(), lr=h_params.trick_ita, amsgrad=True
         )
 
         self.writer = writer
         self.decl_global_step = 0
-        self.global_step = 0
+        self.trick_global_step = 0
         self.device = device
         self.h_params = h_params
 
     def copy_from_other(self, agent: BrumaireController):
         self.decl_model.load_state_dict(agent.decl_model.state_dict())
-        self.model.load_state_dict(agent.model.state_dict())
+        self.trick_model.load_state_dict(agent.trick_model.state_dict())
 
     def save(self, dir_path: str) -> None:
         torch.save(
             self.decl_model.state_dict(), os.path.join(dir_path, "decl_model_data")
         )
-        torch.save(self.model.state_dict(), os.path.join(dir_path, "model_data"))
+        torch.save(
+            self.trick_model.state_dict(), os.path.join(dir_path, "trick_model_data")
+        )
 
     def load(self, dir_path: str) -> None:
         state = torch.load(os.path.join(dir_path, "decl_model_data"))
         self.decl_model.load_state_dict(state)
 
-        state = torch.load(os.path.join(dir_path, "model_data"))
-        self.model.load_state_dict(state)
-
-    def convert_to_card_oriented(
-        self, decl: NDIntArray, strongest: NDIntArray
-    ) -> NDIntArray:
-        """
-        Converts the decl from `(board_num, 3)` to `(board_num, 4)`.
-        """
-
-        board_num = decl.shape[0]
-        converted = np.zeros((board_num, 4))
-        converted[:, 0] = decl[:, 0]
-        converted[:, 1] = decl[:, 1]
-        adj_card = decl[:, 2]
-
-        converted[:, 2] = np.random.randint(4, size=(board_num,))
-        converted[:, 3] = np.random.randint(13, size=(board_num,))
-
-        converted[adj_card == ADJ_ALMIGHTY, 2] = SUIT_SPADE
-        converted[adj_card == ADJ_ALMIGHTY, 3] = 14 - 2
-
-        converted[adj_card == ADJ_MAIN_JACK, 2] = converted[
-            adj_card == ADJ_MAIN_JACK, 0
-        ]
-        converted[adj_card == ADJ_MAIN_JACK, 3] = 11 - 2
-
-        converted[adj_card == ADJ_SUB_JACK, 2] = (
-            3 - converted[adj_card == ADJ_SUB_JACK, 0]
-        )
-        converted[adj_card == ADJ_SUB_JACK, 3] = 11 - 2
-
-        converted[adj_card == ADJ_PARTNER, 2] = SUIT_HEART
-        converted[adj_card == ADJ_PARTNER, 3] = 12 - 2
-
-        converted[adj_card == ADJ_TRUMP_TWO, 2] = converted[
-            adj_card == ADJ_TRUMP_TWO, 0
-        ]
-        converted[adj_card == ADJ_TRUMP_TWO, 3] = 2 - 2
-
-        converted[adj_card == ADJ_FLIPPED_TWO, 2] = (
-            3 - converted[adj_card == ADJ_FLIPPED_TWO, 0]
-        )
-        converted[adj_card == ADJ_FLIPPED_TWO, 3] = 2 - 2
-
-        for idx in range(board_num):
-            if adj_card[idx] == ADJ_TRUMP_MAXIMUM:
-                strongest_card = strongest[idx, decl[idx, 0]]
-                converted[idx, 2] = strongest_card // 13
-                converted[idx, 3] = strongest_card % 13
-
-        return converted
-
-    def convert_to_adj_type_oriented(
-        self, decl: NDIntArray, strongest: NDIntArray
-    ) -> NDIntArray:
-        """
-        Converts the decl from `(board_num, 4)` to `(board_num, 3)`.
-        """
-
-        board_num = decl.shape[0]
-        converted = np.zeros((board_num, 3), dtype=int)
-        converted[:, 0] = decl[:, 0]
-        converted[:, 1] = decl[:, 1]
-
-        converted[:, 2] = ADJ_RANDOM
-
-        for idx in range(board_num):
-            if decl[idx, 2] == strongest[idx, decl[idx, 0]]:
-                # It can be ADJ_RANDOM.
-                # However, we will ignore this because the possibility of "false-positive" is too low.
-                converted[:, 2] = ADJ_TRUMP_MAXIMUM
-
-        converted[
-            (decl[:, 2] == (3 - decl[:, 0])) & (decl[:, 3] == 2 - 2), 2
-        ] = ADJ_FLIPPED_TWO
-        converted[(decl[:, 2] == decl[:, 0]) & (decl[:, 3] == 2 - 2), 2] = ADJ_TRUMP_TWO
-        converted[(decl[:, 2] == SUIT_HEART) & (decl[:, 3] == 12 - 2), 2] = ADJ_PARTNER
-        converted[
-            (decl[:, 2] == (3 - decl[:, 0])) & (decl[:, 3] == 11 - 2), 2
-        ] = ADJ_SUB_JACK
-        converted[
-            (decl[:, 2] == decl[:, 0]) & (decl[:, 3] == 11 - 2), 2
-        ] = ADJ_MAIN_JACK
-        converted[(decl[:, 2] == SUIT_SPADE) & (decl[:, 3] == 14 - 2), 2] = ADJ_ALMIGHTY
-
-        return converted
+        state = torch.load(os.path.join(dir_path, "trick_model_data"))
+        self.trick_model.load_state_dict(state)
 
     def decl_goal(self, board_vec: NDFloatArray, strongest: NDIntArray) -> NDIntArray:
         board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
@@ -178,7 +82,7 @@ class BrumaireController:
         decl[:, 0] = evaluated // 16
         decl[:, 1] = (evaluated % 16) // 8 + 12
         decl[:, 2] = (evaluated % 16) % 8
-        return self.convert_to_card_oriented(decl, strongest)
+        return convert_to_card_oriented(decl, strongest)
 
     def make_decision(
         self, board_vec: NDFloatArray, hand_filter: NDIntArray
@@ -189,113 +93,43 @@ class BrumaireController:
         hand_filter[hand_filter == 0] = -torch.inf
         hand_filter[hand_filter == 1] = 0
 
-        self.model.eval()
+        self.trick_model.eval()
         with torch.no_grad():
-            evaluated: torch.Tensor = self.model(board_vec) + hand_filter
+            evaluated: torch.Tensor = self.trick_model(board_vec) + hand_filter
             evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
 
         return np.eye(54)[evaluated]
 
-    def copy_target(self) -> None:
-        self.target.load_state_dict(self.model.state_dict())
-        self.target.eval()
-
-    def estimate_Q_value(self, recorder: Recorder, gamma: float) -> torch.Tensor:
-        boards = recorder.boards[0]
-        boards = torch.tensor(boards, dtype=torch.float32, device=self.device)
-
-        rewards = recorder.rewards[0]
-        rewards = torch.tensor(rewards, dtype=torch.float32, device=self.device)
-
-        hand_filters = recorder.hand_filters[0]
-        hand_filters = torch.tensor(
-            hand_filters, dtype=torch.float32, device=self.device
-        )
-
-        hand_filters[hand_filters == 0] = -torch.inf
-        hand_filters[hand_filters == 1] = 0
-
-        estimations = torch.zeros((recorder.get_data_size(), 10), device=self.device)
-        for turn in range(10):
-            estimations[:, turn] = rewards[:, turn]
-            if turn < 10 - 1:
-                next_boards = boards[:, turn + 1, :]
-                next_hand_filters = hand_filters[:, turn + 1, :]
-
-                with torch.no_grad():
-                    evaluated: torch.Tensor = (
-                        self.target(next_boards) + next_hand_filters
-                    )
-                    estimations[:, turn] += evaluated.max(dim=1)[0] * gamma
-
-        return estimations
-
     def train_decl(
         self,
-        recorder: Recorder,
-        batch_size: int,
+        train_db: ExperienceDB,
+        test_db: ExperienceDB,
+        train_size: int,
         test_size: int,
         epoch: int = 100,
     ):
-        batch_data, test_data = recorder.gen_batch(batch_size, test_size)
-
-        batch_first_boards = batch_data.first_boards[0]
-        batch_first_boards = torch.tensor(
-            batch_first_boards, dtype=torch.float32, device=self.device
-        )
-
-        test_first_boards = test_data.first_boards[0]
-        test_first_boards = torch.tensor(
-            test_first_boards, dtype=torch.float32, device=self.device
-        )
-
-        batch_decl = self.convert_to_adj_type_oriented(
-            batch_data.declarations[0], batch_data.strongest[0]
-        )
-        batch_arg_decl = (
-            batch_decl[:, 0] * 16
-            + np.minimum(batch_decl[:, 1] - 12, 1) * 8
-            + batch_decl[:, 2]
-        )
-        batch_decl = torch.tensor(
-            batch_arg_decl, dtype=torch.int64, device=self.device
-        ).reshape((-1, 1))
-
-        test_decl = self.convert_to_adj_type_oriented(
-            test_data.declarations[0], test_data.strongest[0]
-        )
-        test_arg_decl = (
-            test_decl[:, 0] * 16
-            + np.minimum(test_decl[:, 1] - 12, 1) * 8
-            + test_decl[:, 2]
-        )
-        test_decl = torch.tensor(
-            test_arg_decl, dtype=torch.int64, device=self.device
-        ).reshape((-1, 1))
-
-        batch_rewards = np.sum(batch_data.rewards[0], axis=1)
-        batch_rewards = torch.tensor(
-            batch_rewards, dtype=torch.float32, device=self.device
-        ).reshape((-1, 1))
-
-        test_rewards = np.sum(test_data.rewards[0], axis=1)
-        test_rewards = torch.tensor(
-            test_rewards, dtype=torch.float32, device=self.device
-        ).reshape((-1, 1))
-
         self.decl_model.train()
 
         for _ in range(epoch):
-            self.copy_target()
+            (
+                train_first_boards,
+                train_arg_decl,
+                train_total_rewards,
+            ) = train_db.gen_decl_batch(train_size, self.device)
+            (
+                test_first_boards,
+                test_arg_decl,
+                test_total_rewards,
+            ) = test_db.gen_decl_batch(test_size, self.device)
 
             #
             # Training
             #
-            evaluated: torch.Tensor = self.decl_model(batch_first_boards)
-            evaluated = evaluated.gather(1, batch_decl)
+            evaluated: torch.Tensor = self.decl_model(train_first_boards)
+            evaluated = evaluated.gather(1, train_arg_decl)
 
             criterion = torch.nn.SmoothL1Loss()
-            loss: torch.Tensor = criterion(evaluated, batch_rewards)
+            loss: torch.Tensor = criterion(evaluated, train_total_rewards)
 
             self.decl_optimizer.zero_grad()
             loss.backward()
@@ -303,7 +137,7 @@ class BrumaireController:
             torch.nn.utils.clip_grad_value_(
                 self.decl_model.parameters(), self.h_params.decl_clip_grad
             )
-            self.optimizer.step()
+            self.trick_optimizer.step()
 
             if self.writer:
                 self.writer.add_scalar(
@@ -315,10 +149,10 @@ class BrumaireController:
             #
             with torch.no_grad():
                 evaluated: torch.Tensor = self.decl_model(test_first_boards)
-                evaluated = evaluated.gather(1, test_decl)
+                evaluated = evaluated.gather(1, test_arg_decl)
 
                 criterion = torch.nn.SmoothL1Loss()
-                loss: torch.Tensor = criterion(evaluated, test_rewards)
+                loss: torch.Tensor = criterion(evaluated, test_total_rewards)
 
                 if self.writer:
                     self.writer.add_scalar(
@@ -327,81 +161,63 @@ class BrumaireController:
 
             self.decl_global_step += 1
 
-    def train(
+    def train_trick(
         self,
-        recorder: Recorder,
-        batch_size: int,
+        train_db: ExperienceDB,
+        test_db: ExperienceDB,
+        train_size: int,
         test_size: int,
         epoch: int = 100,
     ):
-        batch_data, test_data = recorder.gen_batch(batch_size, test_size)
-
-        batch_boards = batch_data.boards[0].reshape((-1, BOARD_VEC_SIZE))
-        batch_boards = torch.tensor(
-            batch_boards, dtype=torch.float32, device=self.device
-        )
-
-        test_boards = test_data.boards[0].reshape((-1, BOARD_VEC_SIZE))
-        test_boards = torch.tensor(test_boards, dtype=torch.float32, device=self.device)
-
-        batch_decisions = batch_data.decisions[0].reshape((-1, 54))
-        batch_decisions = torch.tensor(
-            np.argmax(batch_decisions, axis=1)[:, None],
-            dtype=torch.int64,
-            device=self.device,
-        )
-
-        test_decisions = test_data.decisions[0].reshape((-1, 54))
-        test_decisions = torch.tensor(
-            np.argmax(test_decisions, axis=1)[:, None],
-            dtype=torch.int64,
-            device=self.device,
-        )
-
-        self.model.train()
+        self.trick_model.train()
 
         for _ in range(epoch):
-            self.copy_target()
+            (
+                train_boards,
+                train_arg_decisions,
+                train_estimated_rewards,
+            ) = train_db.gen_trick_batch(train_size, self.device)
+            (
+                test_boards,
+                test_arg_decisions,
+                test_estimated_rewards,
+            ) = test_db.gen_trick_batch(test_size, self.device)
 
             #
             # Training
             #
-            estimations = self.estimate_Q_value(
-                batch_data, self.h_params.gamma
-            ).reshape((-1, 1))
-
-            evaluated: torch.Tensor = self.model(batch_boards)
-            evaluated = evaluated.gather(1, batch_decisions)
+            evaluated: torch.Tensor = self.trick_model(train_boards)
+            evaluated = evaluated.gather(1, train_arg_decisions)
 
             criterion = torch.nn.SmoothL1Loss()
-            loss: torch.Tensor = criterion(evaluated, estimations)
+            loss: torch.Tensor = criterion(evaluated, train_estimated_rewards)
 
-            self.optimizer.zero_grad()
+            self.trick_optimizer.zero_grad()
             loss.backward()
 
             torch.nn.utils.clip_grad_value_(
-                self.model.parameters(), self.h_params.clip_grad
+                self.trick_model.parameters(), self.h_params.trick_clip_grad
             )
-            self.optimizer.step()
+            self.trick_optimizer.step()
 
             if self.writer:
-                self.writer.add_scalar("loss/train", loss.item(), self.global_step)
+                self.writer.add_scalar(
+                    "loss/train", loss.item(), self.trick_global_step
+                )
 
             #
             # Test
             #
-            estimations = self.estimate_Q_value(test_data, self.h_params.gamma).reshape(
-                (-1, 1)
-            )
-
             with torch.no_grad():
-                evaluated: torch.Tensor = self.model(test_boards)
-                evaluated = evaluated.gather(1, test_decisions)
+                evaluated: torch.Tensor = self.trick_model(test_boards)
+                evaluated = evaluated.gather(1, test_arg_decisions)
 
                 criterion = torch.nn.SmoothL1Loss()
-                loss: torch.Tensor = criterion(evaluated, estimations)
+                loss: torch.Tensor = criterion(evaluated, test_estimated_rewards)
 
                 if self.writer:
-                    self.writer.add_scalar("loss/test", loss.item(), self.global_step)
+                    self.writer.add_scalar(
+                        "loss/test", loss.item(), self.trick_global_step
+                    )
 
-            self.global_step += 1
+            self.trick_global_step += 1
