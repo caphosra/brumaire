@@ -48,11 +48,11 @@ class ExperienceDB:
         self.decl_size = 0
         self.trick_size = 0
 
-        self.first_boards = np.array([], dtype=float)
-        self.decl = np.array([], dtype=int)
+        self.first_boards = np.zeros((0, BOARD_VEC_SIZE), dtype=float)
+        self.decl = np.zeros((0, 3), dtype=int)
         self.total_rewards = np.array([], dtype=float)
-        self.boards = np.array([], dtype=float)
-        self.decisions = np.array([], dtype=int)
+        self.boards = np.zeros((0, BOARD_VEC_SIZE), dtype=float)
+        self.decisions = np.zeros((0, 54), dtype=int)
         self.estimated_rewards = np.array([], dtype=float)
 
     def import_from_record(
@@ -75,19 +75,19 @@ class ExperienceDB:
         )
 
         self.first_boards = np.concatenate(
-            self.first_boards, recorder.first_boards[player]
+            ((self.first_boards, recorder.first_boards[player]))
         )
-        self.decl = np.concatenate(self.decl, decl)
-        self.total_rewards = np.concatenate(self.total_rewards, total_rewards)
+        self.decl = np.concatenate((self.decl, decl))
+        self.total_rewards = np.concatenate((self.total_rewards, total_rewards))
 
         self.boards = np.concatenate(
-            self.boards, recorder.boards[player].reshape((-1, BOARD_VEC_SIZE))
+            (self.boards, recorder.boards[player].reshape((-1, BOARD_VEC_SIZE)))
         )
         self.decisions = np.concatenate(
-            self.decisions, recorder.decisions[player].reshape((-1, 54))
+            (self.decisions, recorder.decisions[player].reshape((-1, 54)))
         )
         self.estimated_rewards = np.concatenate(
-            self.estimated_rewards, estimated_rewards
+            (self.estimated_rewards, estimated_rewards)
         )
 
     def _estimate_rewards(
@@ -123,8 +123,8 @@ class ExperienceDB:
                     )
                     estimations[:, turn] += evaluated.max(dim=1)[0] * gamma
 
-        estimations: NDFloatArray = estimations.numpy()
-        return estimations.flatten()
+        estimations_numpy: NDFloatArray = estimations.cpu().numpy()
+        return estimations_numpy.flatten()
 
     def gen_decl_batch(
         self, size: int, device: Any
@@ -142,7 +142,7 @@ class ExperienceDB:
         decl_arg = torch.tensor(decl_arg, dtype=torch.int64, device=device)
 
         total_rewards = torch.tensor(
-            self.total_rewards[chosen], dtype=torch.float32, device=device
+            self.total_rewards[chosen].reshape((-1, 1)), dtype=torch.float32, device=device
         )
 
         return first_boards, decl_arg, total_rewards
@@ -159,7 +159,7 @@ class ExperienceDB:
         decisions_arg = torch.tensor(decisions_arg, dtype=torch.int64, device=device)
 
         estimated_rewards = torch.tensor(
-            self.estimated_rewards[chosen], dtype=torch.float32, device=device
+            self.estimated_rewards[chosen].reshape((-1, 1)), dtype=torch.float32, device=device
         )
 
         return boards, decisions_arg, estimated_rewards
