@@ -1,127 +1,165 @@
 from __future__ import annotations
+from typing import Any, Tuple
 import numpy as np
 import torch
 
 from brumaire.board import BOARD_VEC_SIZE
+from brumaire.constants import NDFloatArray, NDIntArray
+from brumaire.record import Recorder
+from brumaire.model import BrumaireModel
+from brumaire.utils import convert_to_strategy_oriented
 
 
-class TrainableExp:
+class ExperienceDB:
+    decl_size: int
+    trick_size: int
+
+    first_boards: NDFloatArray
     """
-    Stores the experiences in a ready-for-train style.
+    shape: `(decl_size, BOARD_VEC_SIZE)`
     """
 
-    data_num: int
+    decl: NDIntArray
     """
-    The number of experiences this record holds.
-    """
-
-    p: torch.Tensor
-    """
-    Possibilities of chosen.
-
-    shape: `(data_num,)`
+    shape: `(decl_size, 3)`
     """
 
-    boards: torch.Tensor
+    total_rewards: NDFloatArray
     """
-    shape: `(data_num, BOARD_VEC_SIZE)`
-    """
-
-    decisions: torch.Tensor
-    """
-    shape: `(data_num, 54)`
+    shape: `(decl_size,)`
     """
 
-    estimated_rewards: torch.Tensor
+    boards: NDFloatArray
     """
-    shape: `(data_num,)`
-    """
-
-    first_boards: torch.Tensor
-    """
-    shape: `(data_num, BOARD_VEC_SIZE)`
+    shape: `(trick_size, BOARD_VEC_SIZE)`
     """
 
-    declarations: torch.Tensor
+    decisions: NDIntArray
     """
-    shape: `(data_num, 3)`
+    shape: `(trick_size, 54)`
     """
 
-    def __init__(
+    estimated_rewards: NDFloatArray
+    """
+    shape: `(trick_size,)`
+    """
+
+    def __init__(self) -> None:
+        self.decl_size = 0
+        self.trick_size = 0
+
+        self.first_boards = np.array([], dtype=float)
+        self.decl = np.array([], dtype=int)
+        self.total_rewards = np.array([], dtype=float)
+        self.boards = np.array([], dtype=float)
+        self.decisions = np.array([], dtype=int)
+        self.estimated_rewards = np.array([], dtype=float)
+
+    def import_from_record(
         self,
-        data_num: int,
-        p: torch.Tensor,
-        boards: torch.Tensor,
-        decisions: torch.Tensor,
-        estimated_rewards: torch.Tensor,
-        first_boards: torch.Tensor,
-        declarations: torch.Tensor,
-        skip_p_validation: bool = False,
+        player: int,
+        recorder: Recorder,
+        trick_model: BrumaireModel,
+        gamma: float,
+        device: Any,
     ) -> None:
-        assert p.shape == (data_num,)
-        assert boards.shape == (data_num, BOARD_VEC_SIZE)
-        assert decisions.shape == (data_num, 54)
-        assert estimated_rewards.shape == (data_num,)
-        assert first_boards.shape == (data_num, BOARD_VEC_SIZE)
-        assert declarations.shape == (data_num, 3)
+        self.decl_size += recorder.get_data_size()
+        self.trick_size += recorder.get_data_size() * 10
 
-        self.data_num = data_num
-        self.boards = boards
-        self.decisions = decisions
-        self.estimated_rewards = estimated_rewards
-        self.first_boards = first_boards
-        self.declarations = declarations
-
-        if not skip_p_validation:
-            p = p / torch.sum(p)
-        self.p = p
-
-    def _filter_exp(self, choice: torch.Tensor) -> TrainableExp:
-        assert choice.ndim == 1
-
-        data_num = choice.shape[0]
-        p = self.p[choice]
-        boards = self.boards[choice]
-        decisions = self.decisions[choice]
-        estimated_rewards = self.estimated_rewards[choice]
-        first_boards = self.first_boards[choice]
-        declarations = self.declarations[choice]
-        return TrainableExp(
-            data_num,
-            p,
-            boards,
-            decisions,
-            estimated_rewards,
-            first_boards,
-            declarations,
+        decl = convert_to_strategy_oriented(
+            recorder.declarations[player], recorder.strongest[player]
+        )
+        total_rewards = np.sum(recorder.rewards[player], axis=1)
+        estimated_rewards = self._estimate_rewards(
+            player, recorder, trick_model, gamma, device
         )
 
-    def merge(self, exp: TrainableExp) -> TrainableExp:
-        data_num = self.data_num + exp.data_num
-        p = torch.cat((self.p * self.data_num, exp.p * exp.data_num)) / (
-            self.data_num + exp.data_num
+        self.first_boards = np.concatenate(
+            self.first_boards, recorder.first_boards[player]
         )
-        boards = torch.cat((self.boards, exp.boards))
-        decisions = torch.cat((self.decisions, exp.decisions))
-        estimated_rewards = torch.cat(
-            (self.estimated_rewards, exp.estimated_rewards)
+        self.decl = np.concatenate(self.decl, decl)
+        self.total_rewards = np.concatenate(self.total_rewards, total_rewards)
+
+        self.boards = np.concatenate(
+            self.boards, recorder.boards[player].reshape((-1, BOARD_VEC_SIZE))
         )
-        first_boards = torch.cat((self.first_boards, exp.first_boards))
-        declarations = torch.cat((self.declarations, exp.declarations))
-        return TrainableExp(
-            data_num,
-            p,
-            boards,
-            decisions,
-            estimated_rewards,
-            first_boards,
-            declarations,
-            skip_p_validation=True,
+        self.decisions = np.concatenate(
+            self.decisions, recorder.decisions[player].reshape((-1, 54))
+        )
+        self.estimated_rewards = np.concatenate(
+            self.estimated_rewards, estimated_rewards
         )
 
-    def gen_batch(self, batch_size: int) -> TrainableExp:
-        assert batch_size <= self.data_num
+    def _estimate_rewards(
+        self,
+        player: int,
+        recorder: Recorder,
+        trick_model: BrumaireModel,
+        gamma: float,
+        device: Any,
+    ) -> NDFloatArray:
+        boards = recorder.boards[player]
+        boards = torch.tensor(boards, dtype=torch.float32, device=device)
 
-        choice = np.random.choice(self.data_num, batch_size, replace=False, p=self.p)
-        choice = torch.tensor(choice, dtype=torch.int64)
-        return self._filter_exp(choice)
+        rewards = recorder.rewards[player]
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
+
+        hand_filters = recorder.hand_filters[player]
+        hand_filters = torch.tensor(hand_filters, dtype=torch.float32, device=device)
+
+        hand_filters[hand_filters == 0] = -torch.inf
+        hand_filters[hand_filters == 1] = 0
+
+        estimations = torch.zeros((recorder.get_data_size(), 10), device=device)
+        for turn in range(10):
+            estimations[:, turn] = rewards[:, turn]
+            if turn < 10 - 1:
+                next_boards = boards[:, turn + 1, :]
+                next_hand_filters = hand_filters[:, turn + 1, :]
+
+                with torch.no_grad():
+                    evaluated: torch.Tensor = (
+                        trick_model(next_boards) + next_hand_filters
+                    )
+                    estimations[:, turn] += evaluated.max(dim=1)[0] * gamma
+
+        estimations: NDFloatArray = estimations.numpy()
+        return estimations.flatten()
+
+    def gen_decl_batch(
+        self, size: int, device: Any
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        chosen = np.random.choice(self.decl_size, size, replace=False)
+
+        first_boards = torch.tensor(
+            self.first_boards[chosen], dtype=torch.float32, device=device
+        )
+
+        decl = self.decl[chosen]
+        decl_arg = np.reshape(
+            decl[:, 0] * 16 + np.minimum(decl[:, 1] - 12, 1) * 8 + decl[:, 2], (-1, 1)
+        )
+        decl_arg = torch.tensor(decl_arg, dtype=torch.int64, device=device)
+
+        total_rewards = torch.tensor(
+            self.total_rewards[chosen], dtype=torch.float32, device=device
+        )
+
+        return first_boards, decl_arg, total_rewards
+
+    def gen_trick_batch(
+        self, size: int, device: Any
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        chosen = np.random.choice(self.trick_size, size, replace=False)
+
+        boards = torch.tensor(self.boards[chosen], dtype=torch.float32, device=device)
+
+        decisions = self.decisions[chosen]
+        decisions_arg = np.reshape(np.argmax(decisions, axis=1), (-1, 1))
+        decisions_arg = torch.tensor(decisions_arg, dtype=torch.int64, device=device)
+
+        estimated_rewards = torch.tensor(
+            self.estimated_rewards[chosen], dtype=torch.float32, device=device
+        )
+
+        return boards, decisions_arg, estimated_rewards
