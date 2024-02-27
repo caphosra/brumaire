@@ -142,7 +142,9 @@ class ExperienceDB:
         decl_arg = torch.tensor(decl_arg, dtype=torch.int64, device=device)
 
         total_rewards = torch.tensor(
-            self.total_rewards[chosen].reshape((-1, 1)), dtype=torch.float32, device=device
+            self.total_rewards[chosen].reshape((-1, 1)),
+            dtype=torch.float32,
+            device=device,
         )
 
         return first_boards, decl_arg, total_rewards
@@ -159,7 +161,9 @@ class ExperienceDB:
         decisions_arg = torch.tensor(decisions_arg, dtype=torch.int64, device=device)
 
         estimated_rewards = torch.tensor(
-            self.estimated_rewards[chosen].reshape((-1, 1)), dtype=torch.float32, device=device
+            self.estimated_rewards[chosen].reshape((-1, 1)),
+            dtype=torch.float32,
+            device=device,
         )
 
         return boards, decisions_arg, estimated_rewards
