@@ -2,6 +2,10 @@ import numpy as np
 
 from brumaire.constants import (
     NDIntArray,
+    ROLE_UNKNOWN,
+    ROLE_ADJUTANT,
+    ROLE_NAPOLEON,
+    ROLE_ALLY,
     ADJ_ALMIGHTY,
     ADJ_MAIN_JACK,
     ADJ_SUB_JACK,
@@ -13,6 +17,20 @@ from brumaire.constants import (
     SUIT_HEART,
     SUIT_SPADE,
 )
+
+
+def role_to_str(role: int) -> str:
+    if role == ROLE_UNKNOWN:
+        return "Unknown"
+    elif role == ROLE_ADJUTANT:
+        return "Adjutant"
+    elif role == ROLE_NAPOLEON:
+        return "Napoleon"
+    elif role == ROLE_ALLY:
+        return "Ally"
+    else:
+        raise "An invalid role is detected."
+
 
 #
 # There are two styles to store the declarations in this program.

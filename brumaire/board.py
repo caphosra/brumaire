@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Self
+from typing import Self, Tuple
 
 from brumaire.constants import (
     CARD_IN_HAND,
@@ -270,6 +270,10 @@ class BoardData:
                     strongest_card = players_cards[-1][0]
                     strongest[idx, suit] = suit * 13 + strongest_card
         return strongest
+
+    def get_adj_card(self, idx: int) -> Tuple[int, int]:
+        adj_card = np.argwhere(self.cards[idx, :, 3] == 1)[0][0]
+        return adj_card // 13, adj_card % 13 + 2
 
 
 def generate_board(board_num: int) -> BoardData:
