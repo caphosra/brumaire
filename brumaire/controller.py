@@ -2,13 +2,11 @@ from __future__ import annotations
 import numpy as np
 from typing import Any
 import torch
+import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 import os
 
-from brumaire.constants import (
-    NDIntArray,
-    NDFloatArray,
-)
+from brumaire.constants import NDIntArray, NDFloatArray, ADJ_STRATEGY_NUM
 from brumaire.model import BrumaireDeclModel, BrumaireTrickModel, BrumaireHParams
 from brumaire.utils import convert_to_card_oriented
 from brumaire.exp import ExperienceDB
@@ -70,18 +68,39 @@ class BrumaireController:
         state = torch.load(os.path.join(dir_path, "trick_model_data"))
         self.trick_model.load_state_dict(state)
 
-    def decl_goal(self, board_vec: NDFloatArray, strongest: NDIntArray) -> NDIntArray:
-        board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
+    def decl_goal(self, decl_input: NDFloatArray, strongest: NDIntArray) -> NDIntArray:
+        size = decl_input.shape[0]
 
-        self.decl_model.eval()
-        with torch.no_grad():
-            evaluated: torch.Tensor = self.decl_model(board_vec)
-            evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
+        win_p = torch.zeros((size, 4, 14 - 12, ADJ_STRATEGY_NUM))
 
-        decl = np.zeros((board_vec.shape[0], 3), dtype=int)
-        decl[:, 0] = evaluated // 16
-        decl[:, 1] = (evaluated % 16) // 8 + 12
-        decl[:, 2] = (evaluated % 16) % 8
+        for suit in range(4):
+            for num in range(12, 14):
+                for strategy in range(ADJ_STRATEGY_NUM):
+                    decl = np.array(
+                        [[suit / 3, (num - 12) / 8, strategy / (ADJ_STRATEGY_NUM - 1)]]
+                    )
+                    inputs = np.concatenate(
+                        (decl_input, np.repeat(decl, size, axis=0)), axis=1
+                    )
+                    inputs_tensor = torch.tensor(
+                        inputs, dtype=torch.float32, device=self.device
+                    )
+
+                    self.decl_model.eval()
+                    with torch.no_grad():
+                        evaluated: torch.Tensor = self.decl_model(inputs_tensor)
+                        win_p[:, suit, num - 12, strategy] = F.softmax(
+                            evaluated, dim=1
+                        )[:, 1]
+
+        win_p = torch.reshape(win_p, (size, 4 * (14 - 12) * ADJ_STRATEGY_NUM))
+        chosen = win_p.argmax(dim=1).cpu().numpy().astype(int)
+
+        decl = np.zeros((size, 3), dtype=int)
+        decl[:, 0] = chosen // ((14 - 12) * ADJ_STRATEGY_NUM)
+        decl[:, 1] = chosen % ((14 - 12) * ADJ_STRATEGY_NUM) // ADJ_STRATEGY_NUM + 12
+        decl[:, 2] = chosen % ADJ_STRATEGY_NUM
+
         return convert_to_card_oriented(decl, strongest)
 
     def make_decision(
@@ -112,24 +131,21 @@ class BrumaireController:
 
         for _ in range(epoch):
             (
-                train_first_boards,
-                train_arg_decl,
-                train_total_rewards,
+                train_decl_input,
+                train_results,
             ) = train_db.gen_decl_batch(train_size, self.device)
             (
-                test_first_boards,
-                test_arg_decl,
-                test_total_rewards,
+                test_decl_input,
+                test_results,
             ) = test_db.gen_decl_batch(test_size, self.device)
 
             #
             # Training
             #
-            evaluated: torch.Tensor = self.decl_model(train_first_boards)
-            evaluated = evaluated.gather(1, train_arg_decl)
+            evaluated: torch.Tensor = self.decl_model(train_decl_input)
 
-            criterion = torch.nn.SmoothL1Loss()
-            loss: torch.Tensor = criterion(evaluated, train_total_rewards)
+            criterion = torch.nn.CrossEntropyLoss()
+            loss: torch.Tensor = criterion(evaluated, train_results)
 
             self.decl_optimizer.zero_grad()
             loss.backward()
@@ -137,7 +153,7 @@ class BrumaireController:
             torch.nn.utils.clip_grad_value_(
                 self.decl_model.parameters(), self.h_params.decl_clip_grad
             )
-            self.trick_optimizer.step()
+            self.decl_optimizer.step()
 
             if self.writer:
                 self.writer.add_scalar(
@@ -148,11 +164,10 @@ class BrumaireController:
             # Test
             #
             with torch.no_grad():
-                evaluated: torch.Tensor = self.decl_model(test_first_boards)
-                evaluated = evaluated.gather(1, test_arg_decl)
+                evaluated: torch.Tensor = self.decl_model(test_decl_input)
 
-                criterion = torch.nn.SmoothL1Loss()
-                loss: torch.Tensor = criterion(evaluated, test_total_rewards)
+                criterion = torch.nn.CrossEntropyLoss()
+                loss: torch.Tensor = criterion(evaluated, test_results)
 
                 if self.writer:
                     self.writer.add_scalar(

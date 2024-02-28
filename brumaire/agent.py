@@ -72,11 +72,11 @@ class BrumaireAgent(RandomAgent):
     def declare_goal(self, board: BoardData) -> ndarray:
         samples = np.random.rand(board.board_num)
         strongest = board.get_strongest_for_each_suits()
-        board_vec = board.to_vector()
+        decl_input = board.convert_to_decl_input(0)
 
         decl = np.zeros((board.board_num, 4))
         decl[samples > self.epsilon] = self.controller.decl_goal(
-            board_vec[samples > self.epsilon], strongest[samples > self.epsilon]
+            decl_input[samples > self.epsilon], strongest[samples > self.epsilon]
         )
         random_num = np.count_nonzero(samples <= self.epsilon)
         decl[samples <= self.epsilon] = convert_to_card_oriented(
