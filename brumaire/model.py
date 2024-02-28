@@ -5,6 +5,7 @@ from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard.summary import hparams
 
 from brumaire.board import BOARD_VEC_SIZE
+from brumaire.constants import DECL_INPUT_SIZE
 
 
 class BrumaireHParams:
@@ -59,7 +60,7 @@ class BrumaireDeclModel(torch.nn.Module):
         super(BrumaireDeclModel, self).__init__()
 
         self.layer1 = torch.nn.Linear(
-            BOARD_VEC_SIZE, h_param.decl_l1_node, device=device
+            DECL_INPUT_SIZE, h_param.decl_l1_node, device=device
         )
         self.dropout_layer1 = torch.nn.Dropout()
         self.layer2 = torch.nn.Linear(
@@ -70,7 +71,7 @@ class BrumaireDeclModel(torch.nn.Module):
             h_param.decl_l2_node, h_param.decl_l3_node, device=device
         )
         self.dropout_layer3 = torch.nn.Dropout()
-        self.layer4 = torch.nn.Linear(h_param.decl_l3_node, 4 * 8 * 2, device=device)
+        self.layer4 = torch.nn.Linear(h_param.decl_l3_node, 2, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
