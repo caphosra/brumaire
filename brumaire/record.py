@@ -70,7 +70,7 @@ class Recorder:
         self.decisions = np.zeros((5, board_num, TURN, 54), dtype=int)
         self.rewards = np.zeros((5, board_num, TURN))
 
-        self.winners = np.zeros((5, board_num))
+        self.winners = np.zeros((5, board_num), dtype=int)
 
     def get_data_size(self) -> int:
         return self._board_num

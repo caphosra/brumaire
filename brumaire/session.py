@@ -353,7 +353,7 @@ class Game:
         self.recorder.rewards[:, :, turn_num] = rewards.T
 
     def check_result(self) -> None:
-        winners = np.zeros((5, self.board_num))
+        winners = np.zeros((5, self.board_num), dtype=int)
         for idx in range(self.board_num):
             napoleon_team = (self.board.roles[idx] == ROLE_NAPOLEON) | (
                 self.board.roles[idx] == ROLE_ADJUTANT
