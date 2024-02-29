@@ -2,7 +2,7 @@ import numpy as np
 from numpy import ndarray
 
 from brumaire.board import BoardData
-from brumaire.constants import SUIT_SPADE, NDIntArray
+from brumaire.constants import NDIntArray, Suit
 from brumaire.controller import BrumaireController
 from brumaire.utils import convert_to_card_oriented
 
@@ -13,7 +13,7 @@ class AgentBase:
         Declare the goal. It will returns a ndarray shaped (4,)
         """
         return np.repeat(
-            np.array([[SUIT_SPADE, 12, SUIT_SPADE, 14 - 2]]), board.board_num, axis=0
+            np.array([[Suit.SPADE, 12, Suit.SPADE, 14 - 2]]), board.board_num, axis=0
         )
 
     def discard(self, board: BoardData) -> np.ndarray:

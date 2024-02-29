@@ -2,21 +2,12 @@ import numpy as np
 from typing import Self, Tuple
 
 from brumaire.constants import (
-    CARD_IN_HAND,
-    CARD_TRICKED,
-    CARD_UNKNOWN,
+    CardStatus,
     NDBoolArray,
     NDFloatArray,
     NDIntArray,
-    ROLE_ADJUTANT,
-    ROLE_ALLY,
-    ROLE_NAPOLEON,
-    ROLE_UNKNOWN,
-    SUIT_CLUB,
-    SUIT_DIAMOND,
-    SUIT_HEART,
-    SUIT_JOKER,
-    SUIT_SPADE,
+    Role,
+    Suit,
 )
 
 BOARD_VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
@@ -61,7 +52,7 @@ class BoardData:
         self.suit_transform = np.zeros((5, 54), dtype=bool)
         for suit in range(4):
             self.suit_transform[suit, (suit * 13) : ((suit + 1) * 13)] = True
-        self.suit_transform[SUIT_JOKER, :] = True
+        self.suit_transform[Suit.JOKER, :] = True
 
     def to_vector(self) -> NDFloatArray:
         """
@@ -96,10 +87,10 @@ class BoardData:
         You should not call this method before a napoleon is determined.
         """
 
-        return np.argwhere(self.roles == ROLE_NAPOLEON)[:, 1]
+        return np.argwhere(self.roles == Role.NAPOLEON)[:, 1]
 
     def is_adj_revealed(self) -> NDBoolArray:
-        return self.cards[self.cards[:, :, 3] == 1, 0] == CARD_TRICKED
+        return self.cards[self.cards[:, :, 3] == 1, 0] == CardStatus.PLAYED
 
     def slice_boards(self, board_filter: NDBoolArray) -> Self:
         board_num = np.sum(board_filter)
@@ -131,7 +122,7 @@ class BoardData:
 
         # Hide the role information if the adjutant card has not been public.
         is_role_unknown = np.any(
-            (cards[:, :, 0] == CARD_IN_HAND)
+            (cards[:, :, 0] == CardStatus.IN_HAND)
             & ((cards[:, :, 1].T == players).T)
             & (cards[:, :, 3] == 1),
             axis=1,
@@ -141,20 +132,20 @@ class BoardData:
         assert np.shape(is_role_unknown) == (self.board_num, 5)
 
         player_role = np.copy(roles[:, 0])
-        roles[is_role_unknown & (roles == ROLE_ADJUTANT)] = ROLE_UNKNOWN
-        roles[is_role_unknown & (roles == ROLE_ALLY)] = ROLE_UNKNOWN
+        roles[is_role_unknown & (roles == Role.ADJUTANT)] = Role.UNKNOWN
+        roles[is_role_unknown & (roles == Role.ALLY)] = Role.UNKNOWN
         roles[:, 0] = player_role
 
         # Update owners of cards.
         for idx in range(self.board_num):
-            card_known = cards[idx, :, 0] != CARD_UNKNOWN
+            card_known = cards[idx, :, 0] != CardStatus.UNKNOWN
             cards[idx, card_known, 1] = (cards[idx, card_known, 1] - players[idx]) % 5
 
         # Mark unknown the cards which the others have.
-        assert CARD_UNKNOWN == 0
-        others_own = (cards[:, :, 0] == CARD_IN_HAND) & (cards[:, :, 1] != 0)
+        assert CardStatus.UNKNOWN == 0
+        others_own = (cards[:, :, 0] == CardStatus.IN_HAND) & (cards[:, :, 1] != 0)
         cards[others_own] = np.repeat(
-            np.array([[CARD_UNKNOWN, 0, 0, 0]]), len(cards[others_own]), axis=0
+            np.array([[CardStatus.UNKNOWN, 0, 0, 0]]), len(cards[others_own]), axis=0
         )
 
         return BoardData(self.board_num, cards, taken, roles, declaration, lead)
@@ -166,7 +157,7 @@ class BoardData:
         return self.suit_transform[suits]
 
     def get_hand(self, idx: int, player: int) -> NDBoolArray:
-        return (self.cards[idx, :, 0] == CARD_IN_HAND) & (
+        return (self.cards[idx, :, 0] == CardStatus.IN_HAND) & (
             self.cards[idx, :, 1] == player
         )
 
@@ -177,7 +168,7 @@ class BoardData:
 
         assert players.shape == (self.board_num,)
 
-        return (self.cards[:, :, 0] == CARD_IN_HAND) & (
+        return (self.cards[:, :, 0] == CardStatus.IN_HAND) & (
             self.cards[:, :, 1].T == players
         ).T
 
@@ -206,17 +197,17 @@ class BoardData:
         suits = cards // 13
 
         # SPADE A
-        almighty_card = SUIT_SPADE * 13 + (1 - 2 + 13)
+        almighty_card = Suit.SPADE * 13 + (1 - 2 + 13)
         # HEART Q
-        partner_card = SUIT_HEART * 13 + (12 - 2)
+        partner_card = Suit.HEART * 13 + (12 - 2)
         # TRUMP J
         main_jack = trump * 13 + (11 - 2)
         # Flipped TRUMP J
         sub_jack = np.zeros(self.board_num)
-        sub_jack[trump == SUIT_SPADE] = SUIT_CLUB * 13 + (11 - 2)
-        sub_jack[trump == SUIT_HEART] = SUIT_DIAMOND * 13 + (11 - 2)
-        sub_jack[trump == SUIT_DIAMOND] = SUIT_HEART * 13 + (11 - 2)
-        sub_jack[trump == SUIT_CLUB] = SUIT_SPADE * 13 + (11 - 2)
+        sub_jack[trump == Suit.SPADE] = Suit.CLUB * 13 + (11 - 2)
+        sub_jack[trump == Suit.HEART] = Suit.DIAMOND * 13 + (11 - 2)
+        sub_jack[trump == Suit.DIAMOND] = Suit.HEART * 13 + (11 - 2)
+        sub_jack[trump == Suit.CLUB] = Suit.SPADE * 13 + (11 - 2)
         # LEAD 2
         lead_two = lead_suit * 13 + (2 - 2)
 
@@ -231,13 +222,13 @@ class BoardData:
 
         for idx in range(self.board_num):
             scores[idx, suits[idx] == lead_suit[idx]] += LEAD_BONUS
-            if scores[idx, 0] == SUIT_JOKER:
+            if scores[idx, 0] == Suit.JOKER:
                 scores[idx, 0] = LEAD_BONUS - 1
 
             scores[idx, suits[idx] == trump[idx]] += TRUMP_BONUS
             scores[idx, cards[idx] == sub_jack[idx]] += SUB_JACK_BONUS
 
-            suits[idx, suits[idx] == SUIT_JOKER] = trump[idx]
+            suits[idx, suits[idx] == Suit.JOKER] = trump[idx]
             if np.all(suits[idx] == lead_suit[idx]):
                 scores[idx, cards[idx] == lead_two[idx]] += SAME_TWO_BONUS
 
@@ -264,7 +255,7 @@ class BoardData:
             for suit in range(4):
                 suits_card = self.cards[idx, suit * 13 : (suit + 1) * 13]
                 players_cards = np.argwhere(
-                    (suits_card[:, 0] == CARD_IN_HAND) & (suits_card[:, 1] == 0)
+                    (suits_card[:, 0] == CardStatus.IN_HAND) & (suits_card[:, 1] == 0)
                 )
                 if players_cards.size != 0:
                     strongest_card = players_cards[-1][0]
@@ -291,10 +282,10 @@ def generate_board(board_num: int) -> BoardData:
     cards = np.zeros((board_num, 54, 4))
     taken = np.zeros((board_num, 5))
     roles = np.zeros((board_num, 5))
-    decl = np.repeat(np.array([[SUIT_SPADE, 12]]), board_num, axis=0)
-    lead = np.repeat(np.array([[0, SUIT_JOKER]]), board_num, axis=0)
+    decl = np.repeat(np.array([[Suit.SPADE, 12]]), board_num, axis=0)
+    lead = np.repeat(np.array([[0, Suit.JOKER]]), board_num, axis=0)
 
-    cards[:, :, 0] = CARD_IN_HAND
+    cards[:, :, 0] = CardStatus.IN_HAND
 
     for idx in range(board_num):
         # Shuffle the numbers.
@@ -307,7 +298,7 @@ def generate_board(board_num: int) -> BoardData:
             cards[idx, cards[idx, :, 1] == player, 2] = np.arange(10)
 
         # Reset parameters of cards which no one holds.
-        cards[idx, cards[idx, :, 1] == 5] = np.array([CARD_UNKNOWN, 0, 0, 0])
+        cards[idx, cards[idx, :, 1] == 5] = np.array([CardStatus.UNKNOWN, 0, 0, 0])
 
     return BoardData(board_num, cards, taken, roles, decl, lead)
 

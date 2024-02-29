@@ -4,13 +4,7 @@ from typing import Tuple
 from torch.utils.tensorboard import SummaryWriter
 
 from brumaire.board import BOARD_VEC_SIZE, board_from_vector
-from brumaire.constants import (
-    NDFloatArray,
-    NDIntArray,
-    ROLE_ADJUTANT,
-    ROLE_ALLY,
-    ROLE_NAPOLEON,
-)
+from brumaire.constants import NDFloatArray, NDIntArray, Role
 
 TURN = 10
 
@@ -87,6 +81,29 @@ class Recorder:
         new_recorder.winners = self.winners[:, board_filter]
         return new_recorder
 
+    def merge(self, recorder: Recorder) -> Recorder:
+        new_size = self.get_data_size() + recorder.get_data_size()
+        new_recorder = Recorder(new_size)
+        new_recorder.first_boards = np.concatenate(
+            (self.first_boards, recorder.first_boards), axis=1
+        )
+        new_recorder.strongest = np.concatenate(
+            (self.strongest, recorder.strongest), axis=1
+        )
+        new_recorder.declarations = np.concatenate(
+            (self.declarations, recorder.declarations), axis=1
+        )
+        new_recorder.boards = np.concatenate((self.boards, recorder.boards), axis=1)
+        new_recorder.hand_filters = np.concatenate(
+            (self.hand_filters, recorder.hand_filters), axis=1
+        )
+        new_recorder.decisions = np.concatenate(
+            (self.decisions, recorder.decisions), axis=1
+        )
+        new_recorder.rewards = np.concatenate((self.rewards, recorder.rewards), axis=1)
+        new_recorder.winners = np.concatenate((self.winners, recorder.winners), axis=1)
+        return new_recorder
+
     def gen_batch(self, batch_size: int, test_size: int) -> Tuple[Recorder, Recorder]:
         assert batch_size + test_size <= self._board_num
 
@@ -127,9 +144,9 @@ class Recorder:
         win_rate = self.win_rate(player)
         total_win_rate = self.total_win_rate()
         fold_rate = self.fold_rate(player)
-        win_as_napoleon_rate = self.win_as_role_rate(player, ROLE_NAPOLEON)
-        win_as_adjutant_rate = self.win_as_role_rate(player, ROLE_ADJUTANT)
-        win_as_ally_rate = self.win_as_role_rate(player, ROLE_ALLY)
+        win_as_napoleon_rate = self.win_as_role_rate(player, Role.NAPOLEON)
+        win_as_adjutant_rate = self.win_as_role_rate(player, Role.ADJUTANT)
+        win_as_ally_rate = self.win_as_role_rate(player, Role.ALLY)
 
         writer.add_scalar("eval/reward", reward, step)
         writer.add_scalar("eval/win rate", win_rate, step)

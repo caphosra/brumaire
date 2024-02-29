@@ -4,33 +4,24 @@ from typing import List, Callable
 from brumaire.agent import AgentBase
 from brumaire.board import BoardData, generate_board
 from brumaire.constants import (
-    CARD_IN_HAND,
-    CARD_TRICKED,
-    CARD_UNKNOWN,
-    ROLE_ADJUTANT,
-    ROLE_ALLY,
-    ROLE_NAPOLEON,
-    ROLE_UNKNOWN,
+    CardStatus,
+    Role,
     RWD_ALLY_WINS,
     RWD_NAPOLEON_WINS,
     RWD_WINS_TRICK,
-    SUIT_CLUB,
-    SUIT_DIAMOND,
-    SUIT_HEART,
-    SUIT_JOKER,
-    SUIT_SPADE,
+    Suit,
 )
 from brumaire.record import Recorder
 
 
 def suit_to_str(suit: int) -> str:
-    if suit == SUIT_CLUB:
+    if suit == Suit.CLUB:
         return "CLUB"
-    elif suit == SUIT_DIAMOND:
+    elif suit == Suit.DIAMOND:
         return "DIAMOND"
-    elif suit == SUIT_HEART:
+    elif suit == Suit.HEART:
         return "HEART"
-    elif suit == SUIT_SPADE:
+    elif suit == Suit.SPADE:
         return "SPADE"
     else:
         return "JOKER"
@@ -39,7 +30,7 @@ def suit_to_str(suit: int) -> str:
 def card_to_str(card: np.ndarray, convert_number: bool = True) -> str:
     assert card.shape == (2,)
 
-    if card[0] == SUIT_JOKER:
+    if card[0] == Suit.JOKER:
         return "JOKER"
     else:
         suit = suit_to_str(card[0])
@@ -171,8 +162,8 @@ class Game:
 
             self.board.decl[idx] = declarations[idx, napoleon[idx], [0, 1]]
 
-            self.board.roles[idx, napoleon[idx]] = ROLE_NAPOLEON
-            self.board.lead[idx] = np.array([napoleon[idx], SUIT_JOKER])
+            self.board.roles[idx, napoleon[idx]] = Role.NAPOLEON
+            self.board.lead[idx] = np.array([napoleon[idx], Suit.JOKER])
 
             adj_declaration_card = declarations[idx, napoleon[idx], [2, 3]].astype(
                 np.int64
@@ -182,9 +173,12 @@ class Game:
                 idx, adj_declaration_card[0] * 13 + adj_declaration_card[1]
             ]
             adjutant_card[3] = 1.0
-            if adjutant_card[0] == CARD_IN_HAND and adjutant_card[1] != napoleon[idx]:
-                self.board.roles[idx, adjutant_card[1].astype(np.int64)] = ROLE_ADJUTANT
-            self.board.roles[idx, self.board.roles[idx] == ROLE_UNKNOWN] = ROLE_ALLY
+            if (
+                adjutant_card[0] == CardStatus.IN_HAND
+                and adjutant_card[1] != napoleon[idx]
+            ):
+                self.board.roles[idx, adjutant_card[1].astype(np.int64)] = Role.ADJUTANT
+            self.board.roles[idx, self.board.roles[idx] == Role.UNKNOWN] = Role.ALLY
 
         self.log(
             lambda idx: f"player{napoleon[idx]} is a napoleon for {card_to_str(declarations[idx, napoleon[idx], [0, 1]], False)}."
@@ -199,9 +193,11 @@ class Game:
         # Give 4 additional cards.
         for idx in range(self.board_num):
             self.board.cards[
-                idx, self.board.cards[idx, :, 0] == CARD_UNKNOWN, 1
+                idx, self.board.cards[idx, :, 0] == CardStatus.UNKNOWN, 1
             ] = napoleons[idx]
-        self.board.cards[self.board.cards[:, :, 0] == CARD_UNKNOWN, 0] = CARD_IN_HAND
+        self.board.cards[
+            self.board.cards[:, :, 0] == CardStatus.UNKNOWN, 0
+        ] = CardStatus.IN_HAND
 
         # Reindex the napoleons hands.
         napoleons_hands = self.board.get_hands(napoleons)
@@ -242,7 +238,7 @@ class Game:
         # Reflect the consequence to the boards.
         for idx in range(self.board_num):
             self.board.cards[idx, cards_to_be_discarded[idx], 0:3] = np.array(
-                [CARD_TRICKED, napoleons[idx], -1]
+                [CardStatus.PLAYED, napoleons[idx], -1]
             )
 
         # Reindex the napoleons hands.
@@ -291,7 +287,7 @@ class Game:
                 ] = agent_decision
 
             # Mark the cards as already put.
-            self.board.cards[decisions, 0] = CARD_TRICKED
+            self.board.cards[decisions, 0] = CardStatus.PLAYED
             self.board.cards[decisions, 2] = turn_num * 5 + player_index
 
             # Record the cards chosen.
@@ -308,7 +304,7 @@ class Game:
             # Refer the declaration if the lead is a joker.
             if player_index == 0:
                 suits = decisions_arg // 13
-                suits[suits == SUIT_JOKER] = self.board.decl[suits == SUIT_JOKER, 0]
+                suits[suits == Suit.JOKER] = self.board.decl[suits == Suit.JOKER, 0]
                 self.board.lead[:, 1] = suits
 
         # Calculate the winners.
@@ -318,7 +314,7 @@ class Game:
 
         # Initialize info of lead.
         self.board.lead[:, 0] = winners
-        self.board.lead[:, 1] = SUIT_JOKER
+        self.board.lead[:, 1] = Suit.JOKER
 
         # Add scores.
         taken = np.count_nonzero(cards_tricked % 13 >= (10 - 2), axis=1)
@@ -330,24 +326,24 @@ class Game:
         rewards = np.zeros((self.board_num, 5))
         for idx in range(self.board_num):
             winners_role = self.board.roles[idx, winners[idx]]
-            if winners_role == ROLE_NAPOLEON or winners_role == ROLE_ADJUTANT:
-                rewards[idx, self.board.roles[idx] == ROLE_ALLY] -= (
+            if winners_role == Role.NAPOLEON or winners_role == Role.ADJUTANT:
+                rewards[idx, self.board.roles[idx] == Role.ALLY] -= (
                     taken[idx] * RWD_WINS_TRICK
                 )
-                rewards[idx, self.board.roles[idx] == ROLE_NAPOLEON] += (
+                rewards[idx, self.board.roles[idx] == Role.NAPOLEON] += (
                     taken[idx] * RWD_WINS_TRICK
                 )
-                rewards[idx, self.board.roles[idx] == ROLE_ADJUTANT] += (
+                rewards[idx, self.board.roles[idx] == Role.ADJUTANT] += (
                     taken[idx] * RWD_WINS_TRICK
                 )
             else:
-                rewards[idx, self.board.roles[idx] == ROLE_ALLY] += (
+                rewards[idx, self.board.roles[idx] == Role.ALLY] += (
                     taken[idx] * RWD_WINS_TRICK
                 )
-                rewards[idx, self.board.roles[idx] == ROLE_NAPOLEON] -= (
+                rewards[idx, self.board.roles[idx] == Role.NAPOLEON] -= (
                     taken[idx] * RWD_WINS_TRICK
                 )
-                rewards[idx, self.board.roles[idx] == ROLE_ADJUTANT] -= (
+                rewards[idx, self.board.roles[idx] == Role.ADJUTANT] -= (
                     taken[idx] * RWD_WINS_TRICK
                 )
         self.recorder.rewards[:, :, turn_num] = rewards.T
@@ -355,8 +351,8 @@ class Game:
     def check_result(self) -> None:
         winners = np.zeros((5, self.board_num), dtype=int)
         for idx in range(self.board_num):
-            napoleon_team = (self.board.roles[idx] == ROLE_NAPOLEON) | (
-                self.board.roles[idx] == ROLE_ADJUTANT
+            napoleon_team = (self.board.roles[idx] == Role.NAPOLEON) | (
+                self.board.roles[idx] == Role.ADJUTANT
             )
 
             taken = self.board.taken[idx, napoleon_team]
@@ -380,8 +376,8 @@ class Game:
             self.trick(i)
         taken_by_napoleon = np.sum(
             self.board.taken[
-                (self.board.roles == ROLE_NAPOLEON)
-                | (self.board.roles == ROLE_ADJUTANT)
+                (self.board.roles == Role.NAPOLEON)
+                | (self.board.roles == Role.ADJUTANT)
             ]
         )
         if taken_by_napoleon >= self.board.decl[1]:

@@ -7,7 +7,7 @@ from brumaire.board import BOARD_VEC_SIZE, board_from_vector
 from brumaire.constants import (
     NDFloatArray,
     NDIntArray,
-    ADJ_STRATEGY_NUM,
+    AdjStrategy,
     DECL_INPUT_SIZE,
 )
 from brumaire.record import Recorder
@@ -96,7 +96,7 @@ class ExperienceDB:
         )
         decl[:, 0] = decl[:, 0] / 3
         decl[:, 1] = (decl[:, 1] - 12) / 8
-        decl[:, 2] = decl[:, 2] / (ADJ_STRATEGY_NUM - 1)
+        decl[:, 2] = decl[:, 2] / (AdjStrategy.LENGTH - 1)
 
         board = board_from_vector(recorder.first_boards[player])
         decl_input = board.convert_to_decl_input(player)
