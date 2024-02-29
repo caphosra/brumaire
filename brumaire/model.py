@@ -4,7 +4,7 @@ import torch.nn.functional as F
 from torch.utils.tensorboard import SummaryWriter
 from torch.utils.tensorboard.summary import hparams
 
-from brumaire.board import BOARD_VEC_SIZE
+from brumaire.board import BoardData
 from brumaire.constants import DECL_INPUT_SIZE
 
 
@@ -93,7 +93,7 @@ class BrumaireTrickModel(torch.nn.Module):
         super(BrumaireTrickModel, self).__init__()
 
         self.layer1 = torch.nn.Linear(
-            BOARD_VEC_SIZE, h_param.trick_l1_node, device=device
+            BoardData.VEC_SIZE, h_param.trick_l1_node, device=device
         )
         self.dropout_layer1 = torch.nn.Dropout()
         self.layer2 = torch.nn.Linear(

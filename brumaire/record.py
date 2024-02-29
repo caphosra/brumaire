@@ -3,7 +3,7 @@ import numpy as np
 from typing import Tuple
 from torch.utils.tensorboard import SummaryWriter
 
-from brumaire.board import BOARD_VEC_SIZE, board_from_vector
+from brumaire.board import BoardData
 from brumaire.constants import NDFloatArray, NDIntArray, Role
 
 TURN = 10
@@ -12,7 +12,7 @@ TURN = 10
 class Recorder:
     first_boards: NDFloatArray
     """
-    shape: `(5, board_num, BOARD_VEC_SIZE)`
+    shape: `(5, board_num, BoardData.VEC_SIZE)`
     """
 
     strongest: NDIntArray
@@ -27,7 +27,7 @@ class Recorder:
 
     boards: NDFloatArray
     """
-    shape: `(5, board_num, TURN, BOARD_VEC_SIZE)`
+    shape: `(5, board_num, TURN, BoardData.VEC_SIZE)`
     """
 
     hand_filters: NDIntArray
@@ -55,11 +55,11 @@ class Recorder:
     def __init__(self, board_num: int) -> None:
         self._board_num = board_num
 
-        self.first_boards = np.zeros((5, board_num, BOARD_VEC_SIZE))
+        self.first_boards = np.zeros((5, board_num, BoardData.VEC_SIZE))
         self.strongest = np.zeros((5, board_num, 4), dtype=int)
         self.declarations = np.zeros((5, board_num, 4), dtype=int)
 
-        self.boards = np.zeros((5, board_num, TURN, BOARD_VEC_SIZE))
+        self.boards = np.zeros((5, board_num, TURN, BoardData.VEC_SIZE))
         self.hand_filters = np.zeros((5, board_num, TURN, 54), dtype=int)
         self.decisions = np.zeros((5, board_num, TURN, 54), dtype=int)
         self.rewards = np.zeros((5, board_num, TURN))
@@ -128,7 +128,7 @@ class Recorder:
         return np.sum(self.declarations[player, :, 1] == 12) / self._board_num
 
     def win_as_role_rate(self, player: int, role: int, default: float = 0.5) -> float:
-        board = board_from_vector(self.boards[player, :, 0])
+        board = BoardData.from_vector(self.boards[player, :, 0])
         board_count = np.sum(board.roles[:, 0] == role)
         win_count = np.sum(self.winners[player, board.roles[:, 0] == role])
 

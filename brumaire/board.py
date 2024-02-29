@@ -1,5 +1,6 @@
+from __future__ import annotations
 import numpy as np
-from typing import Self, Tuple
+from typing import Tuple
 
 from brumaire.constants import (
     CardStatus,
@@ -10,10 +11,10 @@ from brumaire.constants import (
     Suit,
 )
 
-BOARD_VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
-
 
 class BoardData:
+    VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
+
     board_num: int
     cards: NDIntArray
     taken: NDIntArray
@@ -35,7 +36,7 @@ class BoardData:
         roles: NDIntArray,
         decl: NDIntArray,
         lead: NDIntArray,
-    ) -> Self:
+    ) -> None:
         assert cards.shape == (board_num, 54, 4)
         assert taken.shape == (board_num, 5)
         assert roles.shape == (board_num, 5)
@@ -53,6 +54,37 @@ class BoardData:
         for suit in range(4):
             self.suit_transform[suit, (suit * 13) : ((suit + 1) * 13)] = True
         self.suit_transform[Suit.JOKER, :] = True
+
+    @staticmethod
+    def generate(board_num: int) -> BoardData:
+        """
+        Generates a board with cards shuffled.
+        """
+
+        cards = np.zeros((board_num, 54, 4))
+        taken = np.zeros((board_num, 5))
+        roles = np.zeros((board_num, 5))
+        decl = np.repeat(np.array([[Suit.SPADE, 12]]), board_num, axis=0)
+        lead = np.repeat(np.array([[0, Suit.JOKER]]), board_num, axis=0)
+
+        cards[:, :, 0] = CardStatus.IN_HAND
+
+        for idx in range(board_num):
+            # Shuffle the numbers.
+            owners = np.concatenate(
+                (np.repeat(np.arange(5), 10), np.array([5, 5, 5, 5]))
+            )
+            np.random.shuffle(owners)
+            cards[idx, :, 1] = owners
+
+            # Index the cards.
+            for player in range(5):
+                cards[idx, cards[idx, :, 1] == player, 2] = np.arange(10)
+
+            # Reset parameters of cards which no one holds.
+            cards[idx, cards[idx, :, 1] == 5] = np.array([CardStatus.UNKNOWN, 0, 0, 0])
+
+        return BoardData(board_num, cards, taken, roles, decl, lead)
 
     def to_vector(self) -> NDFloatArray:
         """
@@ -81,6 +113,42 @@ class BoardData:
 
         return np.concatenate((cards, taken, roles, decl, lead), axis=1)
 
+    @staticmethod
+    def from_vector(vec: NDFloatArray) -> BoardData:
+        """
+        An invert method of `to_vector`.
+        """
+
+        assert vec.shape[1] == BoardData.VEC_SIZE
+
+        board_num = vec.shape[0]
+
+        cards = vec[:, 0 : 54 * 4].reshape((board_num, 54, 4)).copy()
+        cards[:, :, 0] *= 2
+        cards[:, :, 1] *= 4
+        cards[:, :, 2] *= 50
+        cards = cards.astype(int)
+
+        taken = vec[:, 54 * 4 : 54 * 4 + 5].copy()
+        taken *= 20
+        taken = taken.astype(int)
+
+        roles = vec[:, 54 * 4 + 5 : 54 * 4 + 5 + 5].copy()
+        roles *= 3
+        roles = roles.astype(int)
+
+        decl = vec[:, 54 * 4 + 5 + 5 : 54 * 4 + 5 + 5 + 2].copy()
+        decl[:, 0] *= 3
+        decl[:, 1] = decl[:, 1] * 8 + 12
+        decl = decl.astype(int)
+
+        lead = vec[:, 54 * 4 + 5 + 5 + 2 : 54 * 4 + 5 + 5 + 2 + 2].copy()
+        lead[:, 0] *= 4.0
+        lead[:, 1] *= 4.0
+        lead = lead.astype(int)
+
+        return BoardData(board_num, cards, taken, roles, decl, lead)
+
     def get_napoleon(self) -> NDIntArray:
         """
         Find the player who is a napoleon.
@@ -92,7 +160,7 @@ class BoardData:
     def is_adj_revealed(self) -> NDBoolArray:
         return self.cards[self.cards[:, :, 3] == 1, 0] == CardStatus.PLAYED
 
-    def slice_boards(self, board_filter: NDBoolArray) -> Self:
+    def slice_boards(self, board_filter: NDBoolArray) -> BoardData:
         board_num = np.sum(board_filter)
 
         cards = self.cards[board_filter]
@@ -103,7 +171,7 @@ class BoardData:
 
         return BoardData(board_num, cards, taken, roles, declaration, lead)
 
-    def change_perspective(self, players: NDIntArray) -> Self:
+    def change_perspective(self, players: NDIntArray) -> BoardData:
         assert players.shape == (self.board_num,)
 
         cards = self.cards.copy()
@@ -150,7 +218,7 @@ class BoardData:
 
         return BoardData(self.board_num, cards, taken, roles, declaration, lead)
 
-    def change_perspective_to_one(self, player: int) -> Self:
+    def change_perspective_to_one(self, player: int) -> BoardData:
         return self.change_perspective(np.repeat(player, self.board_num))
 
     def get_suits_map(self, suits: NDIntArray) -> NDBoolArray:
@@ -276,64 +344,3 @@ class BoardData:
             decl_input[idx, 10:20] = (cards % 13) / 12
 
         return decl_input
-
-
-def generate_board(board_num: int) -> BoardData:
-    cards = np.zeros((board_num, 54, 4))
-    taken = np.zeros((board_num, 5))
-    roles = np.zeros((board_num, 5))
-    decl = np.repeat(np.array([[Suit.SPADE, 12]]), board_num, axis=0)
-    lead = np.repeat(np.array([[0, Suit.JOKER]]), board_num, axis=0)
-
-    cards[:, :, 0] = CardStatus.IN_HAND
-
-    for idx in range(board_num):
-        # Shuffle the numbers.
-        owners = np.concatenate((np.repeat(np.arange(5), 10), np.array([5, 5, 5, 5])))
-        np.random.shuffle(owners)
-        cards[idx, :, 1] = owners
-
-        # Index the cards.
-        for player in range(5):
-            cards[idx, cards[idx, :, 1] == player, 2] = np.arange(10)
-
-        # Reset parameters of cards which no one holds.
-        cards[idx, cards[idx, :, 1] == 5] = np.array([CardStatus.UNKNOWN, 0, 0, 0])
-
-    return BoardData(board_num, cards, taken, roles, decl, lead)
-
-
-def board_from_vector(vec: NDFloatArray) -> BoardData:
-    """
-    An invert method of `to_vector`.
-    """
-
-    assert vec.shape[1] == BOARD_VEC_SIZE
-
-    board_num = vec.shape[0]
-
-    cards = vec[:, 0 : 54 * 4].reshape((board_num, 54, 4)).copy()
-    cards[:, :, 0] *= 2
-    cards[:, :, 1] *= 4
-    cards[:, :, 2] *= 50
-    cards = cards.astype(int)
-
-    taken = vec[:, 54 * 4 : 54 * 4 + 5].copy()
-    taken *= 20
-    taken = taken.astype(int)
-
-    roles = vec[:, 54 * 4 + 5 : 54 * 4 + 5 + 5].copy()
-    roles *= 3
-    roles = roles.astype(int)
-
-    decl = vec[:, 54 * 4 + 5 + 5 : 54 * 4 + 5 + 5 + 2].copy()
-    decl[:, 0] *= 3
-    decl[:, 1] = decl[:, 1] * 8 + 12
-    decl = decl.astype(int)
-
-    lead = vec[:, 54 * 4 + 5 + 5 + 2 : 54 * 4 + 5 + 5 + 2 + 2].copy()
-    lead[:, 0] *= 4.0
-    lead[:, 1] *= 4.0
-    lead = lead.astype(int)
-
-    return BoardData(board_num, cards, taken, roles, decl, lead)

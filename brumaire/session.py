@@ -2,7 +2,7 @@ import numpy as np
 from typing import List, Callable
 
 from brumaire.agent import AgentBase
-from brumaire.board import BoardData, generate_board
+from brumaire.board import BoardData
 from brumaire.constants import (
     CardStatus,
     Role,
@@ -14,26 +14,13 @@ from brumaire.constants import (
 from brumaire.record import Recorder
 
 
-def suit_to_str(suit: int) -> str:
-    if suit == Suit.CLUB:
-        return "CLUB"
-    elif suit == Suit.DIAMOND:
-        return "DIAMOND"
-    elif suit == Suit.HEART:
-        return "HEART"
-    elif suit == Suit.SPADE:
-        return "SPADE"
-    else:
-        return "JOKER"
-
-
 def card_to_str(card: np.ndarray, convert_number: bool = True) -> str:
     assert card.shape == (2,)
 
     if card[0] == Suit.JOKER:
         return "JOKER"
     else:
-        suit = suit_to_str(card[0])
+        suit = Suit.to_str(card[0])
         if convert_number:
             num = card[1].astype(np.int64) + 2
             if num == 11:
@@ -80,7 +67,7 @@ class Game:
         self.logs = list(map(lambda _: list(), range(self.board_num)))
 
     def init_board(self) -> None:
-        self.board = generate_board(self.board_num)
+        self.board = BoardData.generate(self.board_num)
 
     def init_recorder(self) -> None:
         self.recorder = Recorder(self.board_num)

@@ -13,6 +13,19 @@ class Suit:
     SPADE = 3
     JOKER = 4
 
+    @staticmethod
+    def to_str(suit: int) -> str:
+        if suit == Suit.CLUB:
+            return "CLUB"
+        elif suit == Suit.DIAMOND:
+            return "DIAMOND"
+        elif suit == Suit.HEART:
+            return "HEART"
+        elif suit == Suit.SPADE:
+            return "SPADE"
+        else:
+            return "JOKER"
+
 
 class CardStatus:
     UNKNOWN = 0
@@ -25,6 +38,20 @@ class Role:
     NAPOLEON = 1
     ADJUTANT = 2
     ALLY = 3
+
+    @staticmethod
+    def to_str(role: int) -> str:
+        match role:
+            case Role.UNKNOWN:
+                return "Unknown"
+            case Role.ADJUTANT:
+                return "Adjutant"
+            case Role.NAPOLEON:
+                return "Napoleon"
+            case Role.ALLY:
+                return "Ally"
+            case _:
+                raise "An invalid role is detected."
 
 
 class AdjStrategy:

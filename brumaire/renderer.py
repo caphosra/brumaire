@@ -5,7 +5,7 @@ import os
 import numpy as np
 from torch.utils.tensorboard import SummaryWriter
 
-from brumaire.board import BoardData, board_from_vector
+from brumaire.board import BoardData
 from brumaire.constants import (
     Suit,
     Role,
@@ -14,7 +14,6 @@ from brumaire.constants import (
 )
 from brumaire.record import Recorder
 from brumaire.controller import BrumaireController
-from brumaire.utils import role_to_str
 
 IMAGE_DIRECTORY = "./img"
 FONT_FILE = "./fonts/NotoSansJP-Regular.ttf"
@@ -341,7 +340,7 @@ class Renderer:
                     + INFO_CELL_WIDTH // 2,
                     top + INFO_MARGIN + INFO_CELL_HEIGHT + INFO_CELL_HEIGHT // 3,
                 ),
-                text=role_to_str(role),
+                text=Role.to_str(role),
                 anchor="mm",
                 font=self.small_font,
                 fill=self.role_color(role),
@@ -680,7 +679,7 @@ class Renderer:
         with Renderer() as r:
             for idx, board_idx in enumerate(chosen):
                 board_vec = recorder.first_boards[player, board_idx].reshape((1, -1))
-                board = board_from_vector(board_vec)
+                board = BoardData.from_vector(board_vec)
 
                 image = r.render_decl(0, board, 0, controller)
                 images[idx] = np.transpose(np.array(image), (2, 0, 1)) / 255

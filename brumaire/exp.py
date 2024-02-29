@@ -3,7 +3,7 @@ from typing import Any, Tuple
 import numpy as np
 import torch
 
-from brumaire.board import BOARD_VEC_SIZE, board_from_vector
+from brumaire.board import BoardData
 from brumaire.constants import (
     NDFloatArray,
     NDIntArray,
@@ -31,7 +31,7 @@ class ExperienceDB:
 
     boards: NDFloatArray
     """
-    shape: `(trick_size, BOARD_VEC_SIZE)`
+    shape: `(trick_size, Board.VEC_SIZE)`
     """
 
     decisions: NDIntArray
@@ -50,7 +50,7 @@ class ExperienceDB:
 
         self.decl_input = np.zeros((0, DECL_INPUT_SIZE), dtype=float)
         self.results = np.zeros((0, 2), dtype=float)
-        self.boards = np.zeros((0, BOARD_VEC_SIZE), dtype=float)
+        self.boards = np.zeros((0, BoardData.VEC_SIZE), dtype=float)
         self.decisions = np.zeros((0, 54), dtype=int)
         self.estimated_rewards = np.array([], dtype=float)
 
@@ -79,7 +79,7 @@ class ExperienceDB:
         )
 
         self.boards = np.concatenate(
-            (self.boards, recorder.boards[player].reshape((-1, BOARD_VEC_SIZE)))
+            (self.boards, recorder.boards[player].reshape((-1, BoardData.VEC_SIZE)))
         )
         self.decisions = np.concatenate(
             (self.decisions, recorder.decisions[player].reshape((-1, 54)))
@@ -98,7 +98,7 @@ class ExperienceDB:
         decl[:, 1] = (decl[:, 1] - 12) / 8
         decl[:, 2] = decl[:, 2] / (AdjStrategy.LENGTH - 1)
 
-        board = board_from_vector(recorder.first_boards[player])
+        board = BoardData.from_vector(recorder.first_boards[player])
         decl_input = board.convert_to_decl_input(player)
         decl_input = np.concatenate((decl_input, decl), axis=1)
 

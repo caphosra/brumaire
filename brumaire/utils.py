@@ -1,42 +1,6 @@
 import numpy as np
 
-from brumaire.constants import NDIntArray, Role, AdjStrategy, Suit
-
-
-def role_to_str(role: int) -> str:
-    match role:
-        case Role.UNKNOWN:
-            return "Unknown"
-        case Role.ADJUTANT:
-            return "Adjutant"
-        case Role.NAPOLEON:
-            return "Napoleon"
-        case Role.ALLY:
-            return "Ally"
-        case _:
-            raise "An invalid role is detected."
-
-
-def strategy_to_str(strategy: int) -> str:
-    match strategy:
-        case AdjStrategy.ALMIGHTY:
-            return "Almighty"
-        case AdjStrategy.MAIN_JACK:
-            return "Main Jack"
-        case AdjStrategy.SUB_JACK:
-            return "Sub Jack"
-        case AdjStrategy.PARTNER:
-            return "Partner"
-        case AdjStrategy.TRUMP_TWO:
-            return "Trump Two"
-        case AdjStrategy.FLIPPED_TWO:
-            return "Flipped Two"
-        case AdjStrategy.TRUMP_MAXIMUM:
-            return "Trump Maximum"
-        case AdjStrategy.RANDOM:
-            return "Random"
-        case _:
-            raise "An unknown strategy is detected."
+from brumaire.constants import NDIntArray, AdjStrategy, Suit
 
 
 #
