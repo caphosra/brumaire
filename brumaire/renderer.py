@@ -2,17 +2,18 @@ from __future__ import annotations
 from typing import List, Tuple
 from PIL import Image, ImageDraw, ImageFont
 import os
+import numpy as np
+from torch.utils.tensorboard import SummaryWriter
 
-from brumaire.board import BoardData
+from brumaire.board import BoardData, board_from_vector
 from brumaire.constants import (
-    CARD_IN_HAND,
-    CARD_TRICKED,
-    CARD_UNKNOWN,
-    ROLE_UNKNOWN,
-    ROLE_NAPOLEON,
-    ROLE_ADJUTANT,
-    ROLE_ALLY,
+    Suit,
+    Role,
+    CardStatus,
+    AdjStrategy,
 )
+from brumaire.record import Recorder
+from brumaire.controller import BrumaireController
 from brumaire.utils import role_to_str
 
 IMAGE_DIRECTORY = "./img"
@@ -81,26 +82,213 @@ class Renderer:
     ) -> None:
         left, top = pos
         width, height = rect
-        margin_left = (width - size) // 2
-        margin_top = (height - size) // 2
-        suit_image = self.suit_images[suit].resize((size, size))
-        image.paste(
-            suit_image,
-            (left + margin_left, top + margin_top),
-            mask=suit_image,
+        if suit == Suit.JOKER:
+            draw = ImageDraw.Draw(image)
+            draw.text(
+                (
+                    left + width // 2,
+                    top + height // 2,
+                ),
+                text="J",
+                anchor="mm",
+                font=self.font,
+                fill=(10, 10, 10),
+            )
+        else:
+            margin_left = (width - size) // 2
+            margin_top = (height - size) // 2
+            suit_image = self.suit_images[suit].resize((size, size))
+            image.paste(
+                suit_image,
+                (left + margin_left, top + margin_top),
+                mask=suit_image,
+            )
+
+    def draw_card(
+        self,
+        image: Image.Image,
+        pos: Tuple[int, int],
+        rect: Tuple[int, int],
+        suit: int,
+        num: int,
+    ) -> Image:
+        SUIT_RATIO = 0.8
+
+        left, top = pos
+        width, height = rect
+        draw = ImageDraw.Draw(image)
+        draw.rectangle(
+            (left, top, left + width, top + height), outline=(10, 10, 10), width=1
+        )
+        if suit != Suit.JOKER:
+            draw.text(
+                (
+                    left + width // 2,
+                    top + height * 3 // 4,
+                ),
+                text=self.num_to_rich(num + 2),
+                anchor="mm",
+                font=self.font,
+                fill=(10, 10, 10),
+            )
+        self.draw_suit(
+            image,
+            (left + width // 2 - height // 4, top),
+            (height // 2, height // 2),
+            int(height // 2 * SUIT_RATIO),
+            suit,
         )
 
+        return image
+
     def role_color(self, role: int) -> str:
-        if role == ROLE_UNKNOWN:
+        if role == Role.UNKNOWN:
             return (10, 10, 10)
-        elif role == ROLE_NAPOLEON:
+        elif role == Role.NAPOLEON:
             return (250, 10, 10)
-        elif role == ROLE_ADJUTANT:
+        elif role == Role.ADJUTANT:
             return (250, 10, 250)
-        elif role == ROLE_ALLY:
+        elif role == Role.ALLY:
             return (10, 10, 250)
         else:
             raise "An invalid role is passed."
+
+    def _draw_table(
+        self,
+        image: Image.Image,
+        pos: Tuple[int, int],
+        cell_size: Tuple[int, int],
+        cell_num: Tuple[int, int],
+    ) -> None:
+        draw = ImageDraw.Draw(image)
+
+        left, top = pos
+        cell_width, cell_height = cell_size
+        cell_x, cell_y = cell_num
+
+        for x in range(cell_x + 1):
+            draw.line(
+                (
+                    left + cell_width * x,
+                    top,
+                    left + cell_width * x,
+                    top + cell_height * cell_y,
+                ),
+                fill=(10, 10, 10),
+                width=1,
+            )
+        for y in range(cell_y + 1):
+            draw.line(
+                (
+                    left,
+                    top + cell_height * y,
+                    left + cell_width * cell_x,
+                    top + cell_height * y,
+                ),
+                fill=(10, 10, 10),
+                width=1,
+            )
+
+    def _draw_hand(
+        self,
+        image: Image.Image,
+        pos: Tuple[int, int],
+        idx: int,
+        board: BoardData,
+        player: int,
+    ) -> Tuple[int, int]:
+        HAND_MARGIN = 5
+        CARD_WIDTH = 40
+        CARD_HEIGHT = 50
+
+        left, top = pos
+        hands = np.argwhere(board.get_hand(idx, player))[:, 0]
+        for idx in range(hands.shape[0]):
+            suit = hands[idx] // 13
+            num = hands[idx] % 13
+            image = self.draw_card(
+                image,
+                (
+                    left + HAND_MARGIN + (HAND_MARGIN + CARD_WIDTH) * idx,
+                    top + HAND_MARGIN,
+                ),
+                (CARD_WIDTH, CARD_HEIGHT),
+                suit,
+                num,
+            )
+
+        width = HAND_MARGIN * 2 + CARD_WIDTH * hands.shape[0]
+        height = HAND_MARGIN * 2 + CARD_HEIGHT
+        return width, height
+
+    def draw_decl_table(
+        self,
+        image: Image.Image,
+        idx: int,
+        board: BoardData,
+        player: int,
+        controller: BrumaireController,
+    ) -> None:
+        DECL_MARGIN = 10
+        DECL_CELL_HEIGHT = 50
+        DECL_CELL_WIDTH = 100
+        DECL_SUIT_RATIO = 0.8
+
+        draw = ImageDraw.Draw(image)
+
+        _, hand_height = self._draw_hand(
+            image, (DECL_MARGIN, DECL_MARGIN), idx, board, player
+        )
+
+        self._draw_table(
+            image,
+            (DECL_MARGIN, hand_height + DECL_MARGIN),
+            (DECL_CELL_WIDTH, DECL_CELL_HEIGHT),
+            (AdjStrategy.LENGTH + 1, 4 + 1),
+        )
+
+        decl_input = board.convert_to_decl_input(player)
+        win_p = controller.estimate_win_p(decl_input)
+
+        for suit in range(4):
+            left = DECL_MARGIN
+            top = hand_height + DECL_MARGIN + DECL_CELL_HEIGHT * (suit + 1)
+            size = int(DECL_CELL_HEIGHT * DECL_SUIT_RATIO)
+            self.draw_suit(
+                image, (left, top), (DECL_CELL_WIDTH, DECL_CELL_HEIGHT), size, suit
+            )
+
+        for st in range(AdjStrategy.LENGTH):
+            left = DECL_MARGIN + DECL_CELL_WIDTH * (st + 1)
+            top = hand_height + DECL_MARGIN
+            size = int(DECL_CELL_HEIGHT * DECL_SUIT_RATIO)
+            draw.text(
+                (
+                    left + DECL_CELL_WIDTH // 2,
+                    top + DECL_CELL_HEIGHT // 2,
+                ),
+                text=AdjStrategy.to_str(st),
+                anchor="mm",
+                font=self.small_font,
+                fill=(10, 10, 10),
+            )
+
+        for st in range(AdjStrategy.LENGTH):
+            for suit in range(4):
+                left = DECL_MARGIN + DECL_CELL_WIDTH * (st + 1)
+                top = DECL_MARGIN + hand_height + DECL_CELL_HEIGHT * (suit + 1)
+                p_12 = win_p[idx, suit, 0, st]
+                p_13 = win_p[idx, suit, 1, st]
+                draw.text(
+                    (
+                        left + DECL_CELL_WIDTH // 2,
+                        top + DECL_CELL_HEIGHT // 2,
+                    ),
+                    text=f"{p_12:.3f} / {p_13:.3f}",
+                    anchor="mm",
+                    font=self.small_font,
+                    fill=(10, 10, 10),
+                )
 
     def _draw_player_info(
         self, image: Image.Image, top: int, left: int, idx: int, board: BoardData
@@ -329,7 +517,7 @@ class Renderer:
 
         for i in range(54):
             status = board.cards[idx, i, 0]
-            if status == CARD_UNKNOWN:
+            if status == CardStatus.UNKNOWN:
                 draw.text(
                     (
                         left
@@ -346,7 +534,7 @@ class Renderer:
                     font=self.font,
                     fill=(10, 10, 10),
                 )
-            elif status == CARD_TRICKED:
+            elif status == CardStatus.PLAYED:
                 draw.text(
                     (
                         left
@@ -358,7 +546,7 @@ class Renderer:
                         + CELL_HEIGHT * (i // 13 + 1)
                         + CELL_HEIGHT // 4,
                     ),
-                    text="TRICKED",
+                    text="PLAYED",
                     anchor="mm",
                     font=self.small_font,
                     fill=(240, 10, 10),
@@ -396,7 +584,7 @@ class Renderer:
                     font=self.small_font,
                     fill=(10, 10, 10),
                 )
-            elif status == CARD_IN_HAND:
+            elif status == CardStatus.IN_HAND:
                 draw.text(
                     (
                         left
@@ -460,6 +648,44 @@ class Renderer:
         image = self._draw_decl(image, BOARD_HEIGHT, INFO_WIDTH, idx, board)
 
         return image
+
+    def render_decl(
+        self, idx: int, board: BoardData, player: int, controller: BrumaireController
+    ) -> Image.Image:
+        image = Image.new(
+            "RGB",
+            size=(920, 330),
+            color=(255, 255, 255),
+        )
+        self.draw_decl_table(image, idx, board, player, controller)
+        return image
+
+    def write_decl(
+        self,
+        writer: SummaryWriter,
+        recorder: Recorder,
+        controller: BrumaireController,
+        player: int,
+        num: int,
+        step: int = 0,
+    ) -> None:
+        size = recorder.get_data_size()
+
+        assert num <= size
+
+        chosen = list(np.random.choice(size, num, replace=False))
+
+        images = np.zeros((num, 3, 330, 920))
+
+        with Renderer() as r:
+            for idx, board_idx in enumerate(chosen):
+                board_vec = recorder.first_boards[player, board_idx].reshape((1, -1))
+                board = board_from_vector(board_vec)
+
+                image = r.render_decl(0, board, 0, controller)
+                images[idx] = np.transpose(np.array(image), (2, 0, 1)) / 255
+
+        writer.add_images("decl", images, step)
 
     def close(self):
         for suit_image in self.suit_images:

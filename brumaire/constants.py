@@ -39,6 +39,28 @@ class AdjStrategy:
     TRUMP_MAXIMUM = 6
     RANDOM = 7
 
+    @staticmethod
+    def to_str(st: int) -> str:
+        match st:
+            case AdjStrategy.ALMIGHTY:
+                return "Almighty"
+            case AdjStrategy.MAIN_JACK:
+                return "Main Jack"
+            case AdjStrategy.SUB_JACK:
+                return "Sub Jack"
+            case AdjStrategy.PARTNER:
+                return "Partner"
+            case AdjStrategy.TRUMP_TWO:
+                return "Trump Two"
+            case AdjStrategy.FLIPPED_TWO:
+                return "Flipped Two"
+            case AdjStrategy.TRUMP_MAXIMUM:
+                return "Trump Maximum"
+            case AdjStrategy.RANDOM:
+                return "Random"
+            case _:
+                raise "An unknown strategy is detected."
+
 
 RWD_WINS_TRICK = 0.02
 RWD_NAPOLEON_WINS = 2.0
