@@ -335,12 +335,12 @@ class BoardData:
         return adj_card // 13, adj_card % 13 + 2
 
     def convert_to_decl_input(self, player: int) -> NDFloatArray:
-        decl_input = np.zeros((self.board_num, 20))
+        decl_input = np.zeros((self.board_num, 60))
 
         player_owns = np.argwhere(self.get_players_hands(player))
         for idx in range(self.board_num):
             cards = player_owns[player_owns[:, 0] == idx, 1]
-            decl_input[idx, 0:10] = (cards // 13) / 4
-            decl_input[idx, 10:20] = (cards % 13) / 12
+            decl_input[idx, 0:50] = np.eye(5)[cards // 13].flatten()
+            decl_input[idx, 50:] = (cards % 13) / 12
 
         return decl_input
