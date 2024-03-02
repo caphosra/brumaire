@@ -86,7 +86,24 @@ class BrumaireAgent(RandomAgent):
         return decl
 
     def discard(self, board: BoardData) -> np.ndarray:
-        return super().discard(board)
+        comb, vec = board.enumerate_discard_patterns()
+
+        boards = BoardData.from_vector(vec.reshape((-1, BoardData.VEC_SIZE)))
+        hand_filters = boards.get_hand_filter(0).reshape(
+            (vec.shape[0], vec.shape[1], 54)
+        )
+
+        evaluated = np.zeros((vec.shape[0], vec.shape[1]))
+
+        for pattern in range(vec.shape[0]):
+            best_rewards = self.controller.estimate_best_reward(
+                vec[pattern], hand_filters[pattern]
+            )
+            evaluated[pattern] = best_rewards
+
+        discarded = np.sum(np.eye(14)[comb[np.argmax(evaluated, axis=0)]], axis=1)
+
+        return discarded
 
     def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
         samples = np.random.rand(board.board_num)

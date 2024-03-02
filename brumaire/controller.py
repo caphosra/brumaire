@@ -112,6 +112,22 @@ class BrumaireController:
 
         return convert_to_card_oriented(decl, strongest)
 
+    def estimate_best_reward(
+        self, board_vec: NDFloatArray, hand_filter: NDIntArray
+    ) -> NDFloatArray:
+        board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
+        hand_filter = torch.tensor(hand_filter, dtype=torch.float32, device=self.device)
+
+        hand_filter[hand_filter == 0] = -torch.inf
+        hand_filter[hand_filter == 1] = 0
+
+        self.trick_model.eval()
+        with torch.no_grad():
+            evaluated: torch.Tensor = self.trick_model(board_vec) + hand_filter
+            evaluated = evaluated.max(dim=1)[0].cpu().numpy()
+
+        return evaluated
+
     def make_decision(
         self, board_vec: NDFloatArray, hand_filter: NDIntArray
     ) -> NDIntArray:

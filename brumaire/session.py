@@ -187,10 +187,7 @@ class Game:
         ] = CardStatus.IN_HAND
 
         # Reindex the napoleons hands.
-        napoleons_hands = self.board.get_hands(napoleons)
-        self.board.cards[napoleons_hands, 2] = np.repeat(
-            np.arange(14)[None, :], self.board_num, axis=0
-        ).flatten()
+        self.board.reindex_hands(napoleons, 14)
 
         # Have the agents decide cards to be discarded.
         # This operation is conducted for each agent, not for each board.
@@ -229,10 +226,7 @@ class Game:
             )
 
         # Reindex the napoleons hands.
-        napoleons_hands = self.board.get_hands(napoleons)
-        self.board.cards[napoleons_hands, 2] = np.repeat(
-            np.arange(10)[None, :], self.board_num, axis=0
-        ).flatten()
+        self.board.reindex_hands(napoleons)
 
     def trick(self, turn_num: int) -> None:
         self.log(lambda _: f"--- TRICK: {turn_num} ---")

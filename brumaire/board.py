@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from typing import Tuple
+import itertools
 
 from brumaire.constants import (
     CardStatus,
@@ -344,3 +345,40 @@ class BoardData:
             decl_input[idx, 50:] = (cards % 13) / 12
 
         return decl_input
+
+    def reindex_hands(self, players: NDIntArray, card_num: int = 10) -> None:
+        hands = self.get_hands(players)
+        self.cards[hands, 2] = np.repeat(
+            np.arange(card_num)[None, :], self.board_num, axis=0
+        ).flatten()
+
+    def enumerate_discard_patterns(self) -> Tuple[NDIntArray, NDFloatArray]:
+        all_indexes = list(range(14))
+
+        comb: NDIntArray = np.array(
+            list(itertools.combinations(all_indexes, 4)), dtype=int
+        )
+        comb_len = comb.shape[0]
+
+        vec_lists = np.zeros((comb_len, self.board_num, self.VEC_SIZE))
+
+        for pattern in range(comb_len):
+            cards = self.cards.copy()
+            for disc in range(4):
+                disc_cards = (
+                    (self.cards[:, :, 0] == CardStatus.IN_HAND)
+                    & (self.cards[:, :, 1] == 0)
+                    & (self.cards[:, :, 2] == comb[pattern, disc])
+                )
+                cards[disc_cards, 0] = CardStatus.PLAYED
+                cards[disc_cards, 2] = -1
+            board = BoardData(
+                self.board_num, cards, self.taken, self.roles, self.decl, self.lead
+            )
+
+            players = np.zeros(self.board_num, dtype=int)
+            board.reindex_hands(players)
+
+            vec_lists[pattern] = board.to_vector()
+
+        return comb, vec_lists
