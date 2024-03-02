@@ -16,6 +16,8 @@ from brumaire.constants import (
 class BoardData:
     VEC_SIZE = 54 * 4 + 5 + 5 + 2 + 2
 
+    TRICK_INPUT_SIZE = 54 * 4 + 5 + 5 + 2 + 2
+
     board_num: int
     cards: NDIntArray
     taken: NDIntArray
@@ -92,13 +94,13 @@ class BoardData:
         Converts this into a float vector.
         """
 
-        cards = self.cards.copy()
+        cards = self.cards.copy().astype(float)
         cards[:, :, 0] /= 2.0
         cards[:, :, 1] /= 4.0
         cards[:, :, 2] /= 50.0
         cards = cards.reshape((self.board_num, 54 * 4))
 
-        taken = self.taken.copy()
+        taken = self.taken.copy().astype(float)
         taken /= 20.0
 
         roles = self.roles.copy().astype(float)
@@ -345,6 +347,10 @@ class BoardData:
             decl_input[idx, 50:] = (cards % 13) / 12
 
         return decl_input
+
+    def to_trick_input(self) -> NDFloatArray:
+        trick_input = self.to_vector()
+        return trick_input
 
     def reindex_hands(self, players: NDIntArray, card_num: int = 10) -> None:
         hands = self.get_hands(players)

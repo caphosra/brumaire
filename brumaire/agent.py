@@ -107,11 +107,11 @@ class BrumaireAgent(RandomAgent):
 
     def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
         samples = np.random.rand(board.board_num)
-        board_vec = board.to_vector()
+        trick_input = board.to_trick_input()
 
         selected = np.zeros((board.board_num, 54), dtype=int)
         selected[samples > self.epsilon] = self.controller.make_decision(
-            board_vec[samples > self.epsilon], hand_filter[samples > self.epsilon]
+            trick_input[samples > self.epsilon], hand_filter[samples > self.epsilon]
         )
         selected[samples <= self.epsilon] = super().put_card(
             board.slice_boards(samples <= self.epsilon),

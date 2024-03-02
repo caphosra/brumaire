@@ -93,7 +93,7 @@ class BrumaireTrickModel(torch.nn.Module):
         super(BrumaireTrickModel, self).__init__()
 
         self.layer1 = torch.nn.Linear(
-            BoardData.VEC_SIZE, h_param.trick_l1_node, device=device
+            BoardData.TRICK_INPUT_SIZE, h_param.trick_l1_node, device=device
         )
         self.dropout_layer1 = torch.nn.Dropout()
         self.layer2 = torch.nn.Linear(

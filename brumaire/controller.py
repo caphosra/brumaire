@@ -129,9 +129,9 @@ class BrumaireController:
         return evaluated
 
     def make_decision(
-        self, board_vec: NDFloatArray, hand_filter: NDIntArray
+        self, trick_input: NDFloatArray, hand_filter: NDIntArray
     ) -> NDIntArray:
-        board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
+        trick_input = torch.tensor(trick_input, dtype=torch.float32, device=self.device)
         hand_filter = torch.tensor(hand_filter, dtype=torch.float32, device=self.device)
 
         hand_filter[hand_filter == 0] = -torch.inf
@@ -139,7 +139,7 @@ class BrumaireController:
 
         self.trick_model.eval()
         with torch.no_grad():
-            evaluated: torch.Tensor = self.trick_model(board_vec) + hand_filter
+            evaluated: torch.Tensor = self.trick_model(trick_input) + hand_filter
             evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
 
         return np.eye(54)[evaluated]
@@ -213,12 +213,12 @@ class BrumaireController:
 
         for _ in range(epoch):
             (
-                train_boards,
+                train_trick_input,
                 train_arg_decisions,
                 train_estimated_rewards,
             ) = train_db.gen_trick_batch(train_size, self.device)
             (
-                test_boards,
+                test_trick_input,
                 test_arg_decisions,
                 test_estimated_rewards,
             ) = test_db.gen_trick_batch(test_size, self.device)
@@ -226,7 +226,7 @@ class BrumaireController:
             #
             # Training
             #
-            evaluated: torch.Tensor = self.trick_model(train_boards)
+            evaluated: torch.Tensor = self.trick_model(train_trick_input)
             evaluated = evaluated.gather(1, train_arg_decisions)
 
             criterion = torch.nn.SmoothL1Loss()
@@ -249,7 +249,7 @@ class BrumaireController:
             # Test
             #
             with torch.no_grad():
-                evaluated: torch.Tensor = self.trick_model(test_boards)
+                evaluated: torch.Tensor = self.trick_model(test_trick_input)
                 evaluated = evaluated.gather(1, test_arg_decisions)
 
                 criterion = torch.nn.SmoothL1Loss()
