@@ -8,7 +8,7 @@ import os
 
 from brumaire.constants import NDIntArray, NDFloatArray, AdjStrategy
 from brumaire.model import BrumaireDeclModel, BrumaireTrickModel, BrumaireHParams
-from brumaire.utils import convert_to_card_oriented
+from brumaire.utils import convert_to_card_oriented, convert_strategy_oriented_to_input
 from brumaire.exp import ExperienceDB
 
 
@@ -79,18 +79,9 @@ class BrumaireController:
         for suit in range(4):
             for num in range(12, 14):
                 for strategy in range(AdjStrategy.LENGTH):
-                    decl = np.array(
-                        [
-                            [
-                                suit / 3,
-                                (num - 12) / 8,
-                                strategy / (AdjStrategy.LENGTH - 1),
-                            ]
-                        ]
-                    )
-                    inputs = np.concatenate(
-                        (decl_input, np.repeat(decl, size, axis=0)), axis=1
-                    )
+                    decl = np.repeat(np.array([[suit, num, strategy]]), size, axis=0)
+                    inputs = convert_strategy_oriented_to_input(decl_input, decl)
+
                     inputs_tensor = torch.tensor(
                         inputs, dtype=torch.float32, device=self.device
                     )

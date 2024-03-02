@@ -7,12 +7,14 @@ from brumaire.board import BoardData
 from brumaire.constants import (
     NDFloatArray,
     NDIntArray,
-    AdjStrategy,
     DECL_INPUT_SIZE,
 )
 from brumaire.record import Recorder
 from brumaire.model import BrumaireTrickModel
-from brumaire.utils import convert_to_strategy_oriented
+from brumaire.utils import (
+    convert_to_strategy_oriented,
+    convert_strategy_oriented_to_input,
+)
 
 
 class ExperienceDB:
@@ -94,13 +96,10 @@ class ExperienceDB:
         decl = convert_to_strategy_oriented(
             recorder.declarations[player], recorder.strongest[player]
         )
-        decl[:, 0] = decl[:, 0] / 3
-        decl[:, 1] = (decl[:, 1] - 12) / 8
-        decl[:, 2] = decl[:, 2] / (AdjStrategy.LENGTH - 1)
 
         board = BoardData.from_vector(recorder.first_boards[player])
         decl_input = board.convert_to_decl_input(player)
-        decl_input = np.concatenate((decl_input, decl), axis=1)
+        decl_input = convert_strategy_oriented_to_input(decl_input, decl)
 
         assert decl_input.shape == (size, DECL_INPUT_SIZE)
 

@@ -1,6 +1,6 @@
 import numpy as np
 
-from brumaire.constants import NDIntArray, AdjStrategy, Suit
+from brumaire.constants import NDIntArray, NDFloatArray, AdjStrategy, Suit
 
 
 #
@@ -98,3 +98,22 @@ def convert_to_strategy_oriented(decl: NDIntArray, strongest: NDIntArray) -> NDI
     ] = AdjStrategy.ALMIGHTY
 
     return converted
+
+
+def convert_strategy_oriented_to_input(
+    decl_input: NDFloatArray, decl: NDIntArray
+) -> NDFloatArray:
+    size = decl.shape[0]
+
+    assert decl_input.shape == (size, 60)
+    assert decl.shape == (size, 3)
+
+    normalized_decl = np.zeros((size, 4 + 1 + AdjStrategy.LENGTH))
+    normalized_decl[:, 0:4] = np.eye(4)[decl[:, 0]]
+    normalized_decl[:, 4] = (decl[:, 1] - 12) / 8
+    normalized_decl[:, 4 + 1 : 4 + 1 + AdjStrategy.LENGTH] = np.eye(AdjStrategy.LENGTH)[
+        decl[:, 2]
+    ]
+
+    inputs = np.concatenate((decl_input, normalized_decl), axis=1)
+    return inputs
