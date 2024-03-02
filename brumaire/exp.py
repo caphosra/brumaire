@@ -76,16 +76,16 @@ class ExperienceDB:
             results[idx, recorder.winners[player, idx]] = 1
         self.results = np.concatenate((self.results, results))
 
-        board = BoardData.from_vector(recorder.boards[player].reshape((-1, BoardData.VEC_SIZE)))
+        board = BoardData.from_vector(
+            recorder.boards[player].reshape((-1, BoardData.VEC_SIZE))
+        )
         trick_input = board.to_trick_input()
 
         estimated_rewards = self._estimate_rewards(
             player, trick_input, recorder, trick_model, gamma, device
         )
 
-        self.trick_input = np.concatenate(
-            (self.trick_input, trick_input)
-        )
+        self.trick_input = np.concatenate((self.trick_input, trick_input))
         self.decisions = np.concatenate(
             (self.decisions, recorder.decisions[player].reshape((-1, 54)))
         )
@@ -169,7 +169,9 @@ class ExperienceDB:
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         chosen = np.random.choice(self.trick_size, size, replace=False)
 
-        trick_input = torch.tensor(self.trick_input[chosen], dtype=torch.float32, device=device)
+        trick_input = torch.tensor(
+            self.trick_input[chosen], dtype=torch.float32, device=device
+        )
 
         decisions = self.decisions[chosen]
         decisions_arg = np.reshape(np.argmax(decisions, axis=1), (-1, 1))
