@@ -1,5 +1,4 @@
 import numpy as np
-from numpy import ndarray
 
 from brumaire.board import BoardData
 from brumaire.constants import NDIntArray, Suit
@@ -8,29 +7,28 @@ from brumaire.utils import convert_to_card_oriented
 
 
 class AgentBase:
-    def declare_goal(self, board: BoardData) -> np.ndarray:
+    def declare_goal(self, board: BoardData) -> NDIntArray:
         """
         Declare the goal. It will returns a ndarray shaped (4,)
         """
         return np.repeat(
-            np.array([[Suit.SPADE, 12, Suit.SPADE, 14 - 2]]), board.board_num, axis=0
+            np.array([[Suit.SPADE, 12, Suit.SPADE, 14 - 2]], dtype=int),
+            board.board_num,
+            axis=0,
         )
 
-    def discard(self, board: BoardData) -> np.ndarray:
-        decision = np.zeros((board.board_num, 14))
+    def discard(self, board: BoardData) -> NDIntArray:
+        decision = np.zeros((board.board_num, 14), dtype=int)
         decision[:, [0, 1, 2, 3]] = 1
         return decision
 
-    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
+    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
         assert board.board_num == hand_filter.shape[0]
 
-        decision = np.zeros((board.board_num, 54))
+        decision = np.zeros((board.board_num, 54), dtype=int)
         for idx in range(board.board_num):
             decision[idx, np.argmax(hand_filter[idx])] = 1
         return decision
-
-    def tell_reward(self, reward: float):
-        pass
 
 
 class RandomAgent(AgentBase):
@@ -39,18 +37,18 @@ class RandomAgent(AgentBase):
     def __init__(self) -> None:
         super().__init__()
 
-    def declare_goal(self, board: BoardData) -> ndarray:
+    def declare_goal(self, board: BoardData) -> NDIntArray:
         return np.random.randint(
             [0, 12, 0, 0], [4, 14, 4, 13], size=(board.board_num, 4)
         )
 
-    def discard(self, board: BoardData) -> np.ndarray:
-        decision = np.zeros((board.board_num, 14))
+    def discard(self, board: BoardData) -> NDIntArray:
+        decision = np.zeros((board.board_num, 14), dtype=int)
         choice = np.random.choice(np.arange(14), 4, replace=False)
-        decision[:, choice] = 1.0
+        decision[:, choice] = 1
         return decision
 
-    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
+    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
         decision = np.zeros((board.board_num, 54), dtype=int)
         for idx in range(board.board_num):
             possibilities = hand_filter[idx].astype(int) / np.sum(hand_filter[idx])
@@ -69,12 +67,12 @@ class BrumaireAgent(RandomAgent):
         self.controller = controller
         self.epsilon = epsilon
 
-    def declare_goal(self, board: BoardData) -> ndarray:
+    def declare_goal(self, board: BoardData) -> NDIntArray:
         samples = np.random.rand(board.board_num)
         strongest = board.get_strongest_for_each_suits()
         decl_input = board.convert_to_decl_input(0)
 
-        decl = np.zeros((board.board_num, 4))
+        decl = np.zeros((board.board_num, 4), dtype=int)
         decl[samples > self.epsilon] = self.controller.decl_goal(
             decl_input[samples > self.epsilon], strongest[samples > self.epsilon]
         )
@@ -85,7 +83,7 @@ class BrumaireAgent(RandomAgent):
         )
         return decl
 
-    def discard(self, board: BoardData) -> np.ndarray:
+    def discard(self, board: BoardData) -> NDIntArray:
         comb, vec = board.enumerate_discard_patterns()
 
         boards = BoardData.from_vector(vec.reshape((-1, BoardData.VEC_SIZE)))
@@ -101,15 +99,17 @@ class BrumaireAgent(RandomAgent):
             )
             evaluated[pattern] = best_rewards
 
-        discarded = np.sum(np.eye(14)[comb[np.argmax(evaluated, axis=0)]], axis=1)
+        discarded = np.sum(
+            np.eye(14)[comb[np.argmax(evaluated, axis=0)]], axis=1
+        ).astype(int)
 
         return discarded
 
-    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> np.ndarray:
+    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
         samples = np.random.rand(board.board_num)
         board_vec = board.to_vector()
 
-        selected = np.zeros((board.board_num, 54))
+        selected = np.zeros((board.board_num, 54), dtype=int)
         selected[samples > self.epsilon] = self.controller.make_decision(
             board_vec[samples > self.epsilon], hand_filter[samples > self.epsilon]
         )
