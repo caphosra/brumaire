@@ -112,37 +112,33 @@ class BrumaireController:
 
         return convert_to_card_oriented(decl, strongest)
 
-    def estimate_best_reward(
-        self, board_vec: NDFloatArray, hand_filter: NDIntArray
+    def estimate_rewards(
+        self, trick_input: NDFloatArray, hand_index: NDIntArray
     ) -> NDFloatArray:
-        board_vec = torch.tensor(board_vec, dtype=torch.float32, device=self.device)
-        hand_filter = torch.tensor(hand_filter, dtype=torch.float32, device=self.device)
-
-        hand_filter[hand_filter == 0] = -torch.inf
-        hand_filter[hand_filter == 1] = 0
-
-        self.trick_model.eval()
-        with torch.no_grad():
-            evaluated: torch.Tensor = self.trick_model(board_vec) + hand_filter
-            evaluated = evaluated.max(dim=1)[0].cpu().numpy()
-
-        return evaluated
-
-    def make_decision(
-        self, trick_input: NDFloatArray, hand_filter: NDIntArray
-    ) -> NDIntArray:
         trick_input = torch.tensor(trick_input, dtype=torch.float32, device=self.device)
-        hand_filter = torch.tensor(hand_filter, dtype=torch.float32, device=self.device)
+        hand_index = torch.tensor(hand_index, dtype=torch.float32, device=self.device)
 
-        hand_filter[hand_filter == 0] = -torch.inf
-        hand_filter[hand_filter == 1] = 0
+        hand_index[hand_index == 0] = -torch.inf
+        hand_index[hand_index == 1] = 0
 
         self.trick_model.eval()
         with torch.no_grad():
-            evaluated: torch.Tensor = self.trick_model(trick_input) + hand_filter
-            evaluated = evaluated.argmax(dim=1).cpu().numpy().astype(int)
+            evaluated: torch.Tensor = self.trick_model(trick_input) + hand_index
+            evaluated_numpy = evaluated.cpu().numpy()
 
-        return np.eye(54)[evaluated]
+        return evaluated_numpy
+
+    def get_best_action(
+        self, trick_input: NDFloatArray, hand_index: NDIntArray
+    ) -> NDIntArray:
+        evaluated = self.estimate_rewards(trick_input, hand_index)
+        return evaluated.argmax(axis=1)
+
+    def estimate_best_reward(
+        self, trick_input: NDFloatArray, hand_index: NDIntArray
+    ) -> NDFloatArray:
+        evaluated = self.estimate_rewards(trick_input, hand_index)
+        return evaluated.max(axis=1)
 
     def train_decl(
         self,

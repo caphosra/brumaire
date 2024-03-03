@@ -36,9 +36,9 @@ class ExperienceDB:
     shape: `(trick_size, Board.TRICK_INPUT_SIZE)`
     """
 
-    decisions: NDIntArray
+    decisions_arg: NDIntArray
     """
-    shape: `(trick_size, 54)`
+    shape: `(trick_size, 1)`
     """
 
     estimated_rewards: NDFloatArray
@@ -53,7 +53,7 @@ class ExperienceDB:
         self.decl_input = np.zeros((0, DECL_INPUT_SIZE), dtype=float)
         self.results = np.zeros((0, 2), dtype=float)
         self.trick_input = np.zeros((0, BoardData.TRICK_INPUT_SIZE), dtype=float)
-        self.decisions = np.zeros((0, 54), dtype=int)
+        self.decisions_arg = np.zeros((0, 1), dtype=int)
         self.estimated_rewards = np.array([], dtype=float)
 
     def import_from_record(
@@ -64,13 +64,15 @@ class ExperienceDB:
         gamma: float,
         device: Any,
     ) -> None:
-        self.decl_size += recorder.get_data_size()
-        self.trick_size += recorder.get_data_size() * 10
+        new_decl_size = recorder.get_data_size()
+        new_trick_size = recorder.get_data_size() * 10
+
+        self.decl_size += new_decl_size
+        self.trick_size += new_trick_size
 
         decl_input = self._get_decl_input(player, recorder)
         self.decl_input = np.concatenate((self.decl_input, decl_input))
 
-        new_decl_size = recorder.get_data_size()
         results = np.zeros((new_decl_size, 2))
         for idx in range(new_decl_size):
             results[idx, recorder.winners[player, idx]] = 1
@@ -80,15 +82,21 @@ class ExperienceDB:
             recorder.boards[player].reshape((-1, BoardData.VEC_SIZE))
         )
         trick_input = board.to_trick_input()
+        hand_index = board.get_filtered_hand_index(0)
 
         estimated_rewards = self._estimate_rewards(
-            player, trick_input, recorder, trick_model, gamma, device
+            player, trick_input, hand_index, recorder, trick_model, gamma, device
         )
 
+        decisions = recorder.decisions[player].reshape((-1, 54))
+        decisions_arg = np.zeros((new_trick_size, 1), dtype=int)
+        for idx in range(new_trick_size):
+            decisions_arg[idx, 0] = board.cards[
+                idx, np.argmax(decisions[idx]), 2
+            ]
+
         self.trick_input = np.concatenate((self.trick_input, trick_input))
-        self.decisions = np.concatenate(
-            (self.decisions, recorder.decisions[player].reshape((-1, 54)))
-        )
+        self.decisions_arg = np.concatenate((self.decisions_arg, decisions_arg))
         self.estimated_rewards = np.concatenate(
             (self.estimated_rewards, estimated_rewards)
         )
@@ -112,6 +120,7 @@ class ExperienceDB:
         self,
         player: int,
         trick_input: NDFloatArray,
+        hand_index: NDIntArray,
         recorder: Recorder,
         trick_model: BrumaireTrickModel,
         gamma: float,
@@ -125,23 +134,21 @@ class ExperienceDB:
         rewards = recorder.rewards[player]
         rewards = torch.tensor(rewards, dtype=torch.float32, device=device)
 
-        hand_filters = recorder.hand_filters[player]
-        hand_filters = torch.tensor(hand_filters, dtype=torch.float32, device=device)
+        hand_index = hand_index.reshape((size, 10, 10))
+        hand_index = torch.tensor(hand_index, dtype=torch.float32, device=device)
 
-        hand_filters[hand_filters == 0] = -torch.inf
-        hand_filters[hand_filters == 1] = 0
+        hand_index[hand_index == 0] = -torch.inf
+        hand_index[hand_index == 1] = 0
 
         estimations = torch.zeros((size, 10), device=device)
         for turn in range(10):
             estimations[:, turn] = rewards[:, turn]
             if turn < 10 - 1:
                 next_boards = trick_input[:, turn + 1, :]
-                next_hand_filters = hand_filters[:, turn + 1, :]
+                next_hand_index = hand_index[:, turn + 1, :]
 
                 with torch.no_grad():
-                    evaluated: torch.Tensor = (
-                        trick_model(next_boards) + next_hand_filters
-                    )
+                    evaluated: torch.Tensor = trick_model(next_boards) + next_hand_index
                     estimations[:, turn] += evaluated.max(dim=1)[0] * gamma
 
         estimations_numpy: NDFloatArray = estimations.cpu().numpy()
@@ -173,9 +180,9 @@ class ExperienceDB:
             self.trick_input[chosen], dtype=torch.float32, device=device
         )
 
-        decisions = self.decisions[chosen]
-        decisions_arg = np.reshape(np.argmax(decisions, axis=1), (-1, 1))
-        decisions_arg = torch.tensor(decisions_arg, dtype=torch.int64, device=device)
+        decisions_arg = torch.tensor(
+            self.decisions_arg[chosen], dtype=torch.int64, device=device
+        )
 
         estimated_rewards = torch.tensor(
             self.estimated_rewards[chosen].reshape((-1, 1)),

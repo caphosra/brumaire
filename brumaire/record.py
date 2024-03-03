@@ -30,11 +30,6 @@ class Recorder:
     shape: `(5, board_num, TURN, BoardData.VEC_SIZE)`
     """
 
-    hand_filters: NDIntArray
-    """
-    shape: `(5, board_num, TURN, 54)`
-    """
-
     decisions: NDIntArray
     """
     shape: `(5, board_num, TURN, 54)`
@@ -60,7 +55,6 @@ class Recorder:
         self.declarations = np.zeros((5, board_num, 4), dtype=int)
 
         self.boards = np.zeros((5, board_num, TURN, BoardData.VEC_SIZE))
-        self.hand_filters = np.zeros((5, board_num, TURN, 54), dtype=int)
         self.decisions = np.zeros((5, board_num, TURN, 54), dtype=int)
         self.rewards = np.zeros((5, board_num, TURN))
 
@@ -75,7 +69,6 @@ class Recorder:
         new_recorder.strongest = self.strongest[:, board_filter]
         new_recorder.declarations = self.declarations[:, board_filter]
         new_recorder.boards = self.boards[:, board_filter]
-        new_recorder.hand_filters = self.hand_filters[:, board_filter]
         new_recorder.decisions = self.decisions[:, board_filter]
         new_recorder.rewards = self.rewards[:, board_filter]
         new_recorder.winners = self.winners[:, board_filter]
@@ -94,9 +87,6 @@ class Recorder:
             (self.declarations, recorder.declarations), axis=1
         )
         new_recorder.boards = np.concatenate((self.boards, recorder.boards), axis=1)
-        new_recorder.hand_filters = np.concatenate(
-            (self.hand_filters, recorder.hand_filters), axis=1
-        )
         new_recorder.decisions = np.concatenate(
             (self.decisions, recorder.decisions), axis=1
         )

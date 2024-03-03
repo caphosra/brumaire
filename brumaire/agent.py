@@ -1,7 +1,7 @@
 import numpy as np
 
 from brumaire.board import BoardData
-from brumaire.constants import NDIntArray, Suit
+from brumaire.constants import NDIntArray, Suit, CardStatus
 from brumaire.controller import BrumaireController
 from brumaire.utils import convert_to_card_oriented
 
@@ -51,7 +51,7 @@ class RandomAgent(AgentBase):
         hand_filter = board.get_hand_filter(0)
         decision = np.zeros((board.board_num, 54), dtype=int)
         for idx in range(board.board_num):
-            possibilities = hand_filter[idx].astype(int) / np.sum(hand_filter[idx])
+            possibilities = hand_filter[idx] / np.sum(hand_filter[idx])
             decided = np.random.choice(54, 1, p=possibilities)[0]
             decision[idx, decided] = 1
         return decision
@@ -87,34 +87,49 @@ class BrumaireAgent(RandomAgent):
         comb, vec = board.enumerate_discard_patterns()
 
         boards = BoardData.from_vector(vec.reshape((-1, BoardData.VEC_SIZE)))
-        hand_filters = boards.get_hand_filter(0).reshape(
-            (vec.shape[0], vec.shape[1], 54)
+        trick_inputs = boards.to_trick_input().reshape(
+            ((vec.shape[0], vec.shape[1], BoardData.TRICK_INPUT_SIZE))
+        )
+        hand_indexes = boards.get_filtered_hand_index(0).reshape(
+            (vec.shape[0], vec.shape[1], 10)
         )
 
         evaluated = np.zeros((vec.shape[0], vec.shape[1]))
 
         for pattern in range(vec.shape[0]):
             best_rewards = self.controller.estimate_best_reward(
-                vec[pattern], hand_filters[pattern]
+                trick_inputs[pattern], hand_indexes[pattern]
             )
             evaluated[pattern] = best_rewards
 
         discarded = np.sum(
-            np.eye(14)[comb[np.argmax(evaluated, axis=0)]], axis=1
-        ).astype(int)
+            np.eye(14, dtype=int)[comb[np.argmax(evaluated, axis=0)]], axis=1
+        )
 
         return discarded
 
     def play_card(self, board: BoardData) -> NDIntArray:
-        hand_filter = board.get_hand_filter(0)
-
         samples = np.random.rand(board.board_num)
-        trick_input = board.to_trick_input()
+        sliced_board = board.slice_boards(samples > self.epsilon)
+
+        trick_input = sliced_board.to_trick_input()
+        hand_index = sliced_board.get_filtered_hand_index(0)
+
+        decision = self.controller.get_best_action(trick_input, hand_index)
+
+        # The function `make_decision` returns an index of the chosen card
+        # while `play_card` is expected to return one-hot encoded data having 54 rows.
+        # So, we need to convert it manually.
+        decision_extended = np.zeros((sliced_board.board_num, 54), dtype=bool)
+        for idx in range(sliced_board.board_num):
+            decision_extended[idx] = (
+                (sliced_board.cards[idx, :, 0] == CardStatus.IN_HAND)
+                & (sliced_board.cards[idx, :, 1] == 0)
+                & (sliced_board.cards[idx, :, 2] == decision[idx])
+            )
 
         selected = np.zeros((board.board_num, 54), dtype=int)
-        selected[samples > self.epsilon] = self.controller.make_decision(
-            trick_input[samples > self.epsilon], hand_filter[samples > self.epsilon]
-        )
+        selected[samples > self.epsilon] = decision_extended
         selected[samples <= self.epsilon] = super().play_card(
             board.slice_boards(samples <= self.epsilon)
         )

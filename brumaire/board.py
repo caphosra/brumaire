@@ -264,6 +264,15 @@ class BoardData:
 
         return possible_cards
 
+    def get_filtered_hand_index(self, player: int) -> NDIntArray:
+        filtered = self.get_hand_filter(player)
+
+        indexes = np.zeros((self.board_num, 10), dtype=int)
+        for idx in range(self.board_num):
+            indexes[idx] = np.sum(np.eye(10)[self.cards[idx, filtered[idx], 2]], axis=0)
+
+        return indexes
+
     def get_trick_winner(self, cards: NDIntArray) -> NDIntArray:
         trump = self.decl[:, 0]
         lead_suit = self.lead[:, 1]

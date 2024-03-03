@@ -104,7 +104,7 @@ class BrumaireTrickModel(torch.nn.Module):
             h_param.trick_l2_node, h_param.trick_l3_node, device=device
         )
         self.dropout_layer3 = torch.nn.Dropout()
-        self.layer4 = torch.nn.Linear(h_param.trick_l3_node, 54, device=device)
+        self.layer4 = torch.nn.Linear(h_param.trick_l3_node, 10, device=device)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         x = F.leaky_relu(self.dropout_layer1(self.layer1(x)))
