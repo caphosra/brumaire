@@ -22,9 +22,8 @@ class AgentBase:
         decision[:, [0, 1, 2, 3]] = 1
         return decision
 
-    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
-        assert board.board_num == hand_filter.shape[0]
-
+    def play_card(self, board: BoardData) -> NDIntArray:
+        hand_filter = board.get_hand_filter(0)
         decision = np.zeros((board.board_num, 54), dtype=int)
         for idx in range(board.board_num):
             decision[idx, np.argmax(hand_filter[idx])] = 1
@@ -48,7 +47,8 @@ class RandomAgent(AgentBase):
         decision[:, choice] = 1
         return decision
 
-    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
+    def play_card(self, board: BoardData) -> NDIntArray:
+        hand_filter = board.get_hand_filter(0)
         decision = np.zeros((board.board_num, 54), dtype=int)
         for idx in range(board.board_num):
             possibilities = hand_filter[idx].astype(int) / np.sum(hand_filter[idx])
@@ -105,7 +105,9 @@ class BrumaireAgent(RandomAgent):
 
         return discarded
 
-    def put_card(self, board: BoardData, hand_filter: NDIntArray) -> NDIntArray:
+    def play_card(self, board: BoardData) -> NDIntArray:
+        hand_filter = board.get_hand_filter(0)
+
         samples = np.random.rand(board.board_num)
         trick_input = board.to_trick_input()
 
@@ -113,8 +115,7 @@ class BrumaireAgent(RandomAgent):
         selected[samples > self.epsilon] = self.controller.make_decision(
             trick_input[samples > self.epsilon], hand_filter[samples > self.epsilon]
         )
-        selected[samples <= self.epsilon] = super().put_card(
-            board.slice_boards(samples <= self.epsilon),
-            hand_filter[samples <= self.epsilon],
+        selected[samples <= self.epsilon] = super().play_card(
+            board.slice_boards(samples <= self.epsilon)
         )
         return selected

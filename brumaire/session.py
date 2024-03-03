@@ -246,10 +246,8 @@ class Game:
                 players_boards = self.board.slice_boards(players == player)
                 players_boards = players_boards.change_perspective_to_one(player)
 
+                agent_decision = self.agents[player].play_card(players_boards)
                 hand_filter = players_boards.get_hand_filter(0)
-                agent_decision = self.agents[player].put_card(
-                    players_boards, hand_filter
-                )
                 agent_decision = agent_decision * hand_filter
 
                 assert np.all(np.sum(agent_decision, axis=1) == 1)
