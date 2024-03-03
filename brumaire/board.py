@@ -64,11 +64,11 @@ class BoardData:
         Generates a board with cards shuffled.
         """
 
-        cards = np.zeros((board_num, 54, 4))
-        taken = np.zeros((board_num, 5))
-        roles = np.zeros((board_num, 5))
-        decl = np.repeat(np.array([[Suit.SPADE, 12]]), board_num, axis=0)
-        lead = np.repeat(np.array([[0, Suit.JOKER]]), board_num, axis=0)
+        cards = np.zeros((board_num, 54, 4), dtype=int)
+        taken = np.zeros((board_num, 5), dtype=int)
+        roles = np.zeros((board_num, 5), dtype=int)
+        decl = np.repeat(np.array([[Suit.SPADE, 12]], dtype=int), board_num, axis=0)
+        lead = np.repeat(np.array([[0, Suit.JOKER]], dtype=int), board_num, axis=0)
 
         cards[:, :, 0] = CardStatus.IN_HAND
 
@@ -243,10 +243,10 @@ class BoardData:
             self.cards[:, :, 1].T == players
         ).T
 
-    def get_players_hands(self, player: int) -> NDIntArray:
+    def get_players_hands(self, player: int) -> NDBoolArray:
         return self.get_hands(np.ones(self.board_num, dtype=np.int64) * player)
 
-    def get_hand_filter(self, player: int) -> NDIntArray:
+    def get_hand_filter(self, player: int) -> NDBoolArray:
         lead_suit = self.lead[:, 1]
         is_trump: NDBoolArray = self.decl[:, 0] == lead_suit
 
@@ -258,6 +258,9 @@ class BoardData:
 
         nothing = ~np.any(possible_cards, axis=1)
         possible_cards[nothing] = hands[nothing]
+
+        assert np.all(self.cards[possible_cards, 0] == CardStatus.IN_HAND)
+        assert np.all(self.cards[possible_cards, 1] == player)
 
         return possible_cards
 
