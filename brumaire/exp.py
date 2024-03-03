@@ -91,9 +91,7 @@ class ExperienceDB:
         decisions = recorder.decisions[player].reshape((-1, 54))
         decisions_arg = np.zeros((new_trick_size, 1), dtype=int)
         for idx in range(new_trick_size):
-            decisions_arg[idx, 0] = board.cards[
-                idx, np.argmax(decisions[idx]), 2
-            ]
+            decisions_arg[idx, 0] = board.cards[idx, np.argmax(decisions[idx]), 2]
 
         self.trick_input = np.concatenate((self.trick_input, trick_input))
         self.decisions_arg = np.concatenate((self.decisions_arg, decisions_arg))
