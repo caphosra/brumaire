@@ -3,6 +3,16 @@ import numpy as np
 from brumaire.constants import NDIntArray, NDFloatArray, AdjStrategy, Suit
 
 
+def num_to_str(num: int) -> str:
+    return (
+        "A"
+        if num == 14
+        else (
+            "K" if num == 13 else ("Q" if num == 12 else "J" if num == 11 else str(num))
+        )
+    )
+
+
 #
 # There are two styles to store the declarations in this program.
 # One is a "card-oriented" style, in which the record holds exact suits and numbers of adjutant cards.
