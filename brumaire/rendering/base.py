@@ -272,7 +272,7 @@ class TableComponent(ComponentBase):
     OUTLINE_COLOR = (10, 10, 10)
     OUTLINE_WIDTH = 1
 
-    cell_size: Tuple[int, int]
+    size: Tuple[int, int]
     cell_x: int
     cell_y: int
     children: List[List[ComponentBase]]
@@ -283,7 +283,6 @@ class TableComponent(ComponentBase):
         cell_y: int,
         children_fun: Callable[[int, int], ComponentBase],
     ) -> None:
-        self.cell_size = children_fun(0, 0).get_size()
         self.cell_x = cell_x
         self.cell_y = cell_y
         self.children = list()
@@ -291,48 +290,77 @@ class TableComponent(ComponentBase):
             x_list = list()
             for y in range(cell_y):
                 component = children_fun(x, y)
-
-                assert component.get_size() == self.cell_size
-
                 x_list.append(component)
             self.children.append(x_list)
 
+        width_sum = 0
+        for x in range(cell_x):
+            width, _ = self.children[x][0].get_size()
+            for y in range(1, cell_y):
+                current_width, _ = self.children[x][y].get_size()
+                assert width == current_width
+            width_sum += width
+
+        height_sum = 0
+        for y in range(cell_y):
+            _, height = self.children[0][y].get_size()
+            for x in range(1, cell_x):
+                _, current_height = self.children[x][y].get_size()
+                assert height == current_height
+            height_sum += height
+
+        self.size = width_sum, height_sum
+
     def get_size(self) -> Tuple[int, int]:
-        w, h = self.cell_size
-        return w * self.cell_x, h * self.cell_y
+       return self.size
 
     def _draw_lines(self, image: Image.Image, pos: Tuple[int, int]) -> None:
         x, y = pos
-        w, h = self.cell_size
+        w, h = self.size
         draw = ImageDraw.Draw(image)
+
+        width_sum = 0
         for x_idx in range(self.cell_x + 1):
             draw.line(
                 (
-                    x + w * x_idx,
+                    x + width_sum,
                     y,
-                    x + w * x_idx,
-                    y + h * self.cell_y,
+                    x + width_sum,
+                    y + h,
                 ),
                 fill=TableComponent.OUTLINE_COLOR,
                 width=TableComponent.OUTLINE_WIDTH,
             )
+            if x_idx < self.cell_x:
+                width, _ = self.children[x_idx][0].get_size()
+                width_sum += width
+
+        height_sum = 0
         for y_idx in range(self.cell_y + 1):
             draw.line(
                 (
                     x,
-                    y + h * y_idx,
-                    x + w * self.cell_x,
-                    y + h * y_idx,
+                    y + height_sum,
+                    x + w,
+                    y + height_sum,
                 ),
                 fill=TableComponent.OUTLINE_COLOR,
                 width=TableComponent.OUTLINE_WIDTH,
             )
+            if y_idx < self.cell_y:
+                _, height = self.children[0][y_idx].get_size()
+                height_sum += height
 
     def draw(self, image: Image.Image, pos: Tuple[int, int]) -> None:
         self._draw_lines(image, pos)
 
         x, y = pos
-        w, h = self.cell_size
+        width_sum = 0
         for x_idx in range(self.cell_x):
+            height_sum = 0
             for y_idx in range(self.cell_y):
-                self.children[x_idx][y_idx].draw(image, (x + w * x_idx, y + h * y_idx))
+                self.children[x_idx][y_idx].draw(image, (x + width_sum, y + height_sum))
+                _, height = self.children[x_idx][y_idx].get_size()
+                height_sum += height
+            width, _ = self.children[x_idx][0].get_size()
+            width_sum += width
