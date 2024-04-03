@@ -312,7 +312,7 @@ class TableComponent(ComponentBase):
         self.size = width_sum, height_sum
 
     def get_size(self) -> Tuple[int, int]:
-       return self.size
+        return self.size
 
     def _draw_lines(self, image: Image.Image, pos: Tuple[int, int]) -> None:
         x, y = pos
