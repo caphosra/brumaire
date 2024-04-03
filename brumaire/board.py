@@ -219,6 +219,9 @@ class BoardData:
             np.array([[CardStatus.UNKNOWN, 0, 0, 0]]), len(cards[others_own]), axis=0
         )
 
+        # Reflect the adjutant card information to the copies.
+        cards[:, :, 3] = self.cards[:, :, 3].copy()
+
         return BoardData(self.board_num, cards, taken, roles, declaration, lead)
 
     def change_perspective_to_one(self, player: int) -> BoardData:
