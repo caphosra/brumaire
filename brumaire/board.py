@@ -194,7 +194,7 @@ class BoardData:
         # Hide the role information if the adjutant card has not been public.
         is_role_unknown = np.any(
             (cards[:, :, 0] == CardStatus.IN_HAND)
-            & ((cards[:, :, 1].T == players).T)
+            & ((cards[:, :, 1].T != players).T)
             & (cards[:, :, 3] == 1),
             axis=1,
         )
