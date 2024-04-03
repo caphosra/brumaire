@@ -39,3 +39,6 @@ packages = ["brumaire"]
 name = "torch"
 url = "https://download.pytorch.org/whl/cu121"
 type = "index"
+
+[tool.ruff]
+extend-include = ["*.ipynb"]
