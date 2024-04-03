@@ -117,41 +117,38 @@ class DeclTableComponent(ComponentBase):
             ),
         )
 
-        napoleon = board.get_napoleon()[idx]
-        width, _ = decl_component.get_size()
-        decl_component = VComponent(
-            [
-                TextComponent(
-                    (width, DeclTableComponent.NAPOLEON_TEXT_HEIGHT),
-                    f"pl. {napoleon}",
-                    DeclTableComponent.NAPOLEON_FONT_SIZE,
-                    DeclTableComponent.FONT_COLOR,
-                ),
-                decl_component,
-            ]
-        )
-
         adj_suit, adj_num = board.get_adj_card(idx)
         card_component = MarginComponent(
             DeclTableComponent.MARGIN,
             CardComponent(DeclTableComponent.ADJ_CARD_SIZE, adj_suit, adj_num),
         )
 
-        width, _ = card_component.get_size()
-        card_component = VComponent(
-            [
-                TextComponent(
-                    (width, DeclTableComponent.ADJ_TEXT_HEIGHT),
-                    "Adj.",
-                    DeclTableComponent.ADJ_FONT_SIZE,
-                    DeclTableComponent.FONT_COLOR,
-                ),
-                card_component,
-            ]
-        )
+        def children_fun(x, y):
+            match x, y:
+                case 0, 0:
+                    napoleon = board.get_napoleon()[idx]
+                    width, _ = decl_component.get_size()
+                    return TextComponent(
+                        (width, DeclTableComponent.NAPOLEON_TEXT_HEIGHT),
+                        f"pl. {napoleon}",
+                        DeclTableComponent.NAPOLEON_FONT_SIZE,
+                        DeclTableComponent.FONT_COLOR,
+                    )
+                case 0, 1:
+                    return decl_component
+                case 1, 0:
+                    width, _ = card_component.get_size()
+                    return TextComponent(
+                        (width, DeclTableComponent.ADJ_TEXT_HEIGHT),
+                        "Adj.",
+                        DeclTableComponent.ADJ_FONT_SIZE,
+                        DeclTableComponent.FONT_COLOR,
+                    )
+                case 1, 1:
+                    return card_component
 
         self.child = MarginComponent(
-            DeclTableComponent.MARGIN, HComponent([decl_component, card_component])
+            DeclTableComponent.MARGIN, TableComponent(2, 2, children_fun)
         )
 
     def get_size(self) -> Tuple[int, int]:
