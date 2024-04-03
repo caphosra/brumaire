@@ -88,7 +88,7 @@ class HandEvalComponent(ComponentBase):
                     [
                         TextComponent(
                             HandEvalComponent.TEXT_SIZE,
-                            f"{reward:.2f}",
+                            f"{reward:.3f}",
                             HandEvalComponent.FONT_SIZE,
                             HandEvalComponent.FONT_COLOR,
                         ),
